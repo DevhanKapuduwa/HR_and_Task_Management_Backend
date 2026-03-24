@@ -29,6 +29,7 @@ export default function MyTasks() {
     const navigate = useNavigate();
     const [geoError, setGeoError] = useState<string>('');
     const [submitModal, setSubmitModal] = useState<Task | null>(null);
+    const [submitMode, setSubmitMode] = useState<'approval' | 'subtask_complete'>('approval');
     const [selectedPhotos, setSelectedPhotos] = useState<File[]>([]);
     const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -57,6 +58,16 @@ export default function MyTasks() {
         onError: (e: any) => setGeoError(e.response?.data?.message || 'Failed to submit.'),
     });
 
+    const completeSubtaskMut = useMutation({
+        mutationFn: ({ id, photos }: { id: number; photos: File[] }) => taskApi.completeSubtask(id, photos),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ['my-tasks'] });
+            qc.invalidateQueries({ queryKey: ['worker-dashboard'] });
+            closeSubmitModal();
+        },
+        onError: (e: any) => setGeoError(e.response?.data?.message || 'Failed to complete sub-task.'),
+    });
+
     const filtered = filter === 'all' ? tasks : tasks.filter(t => {
         if (t.status === filter) return true;
         // Also show parent tasks that have sub-tasks with matching status
@@ -71,6 +82,7 @@ export default function MyTasks() {
 
     const openSubmitModal = (task: Task) => {
         setSubmitModal(task);
+        setSubmitMode(task.parent_id ? 'subtask_complete' : 'approval');
         setSelectedPhotos([]);
         setPhotoPreviews([]);
         setGeoError('');
@@ -78,6 +90,7 @@ export default function MyTasks() {
 
     const closeSubmitModal = () => {
         setSubmitModal(null);
+        setSubmitMode('approval');
         setSelectedPhotos([]);
         setPhotoPreviews([]);
     };
@@ -107,7 +120,11 @@ export default function MyTasks() {
     };
 
     const handleSubmitForApproval = () => {
-        if (!submitModal || selectedPhotos.length === 0) return;
+        if (!submitModal) return;
+        if (submitMode === 'subtask_complete') {
+            completeSubtaskMut.mutate({ id: submitModal.id, photos: selectedPhotos });
+            return;
+        }
         submitMut.mutate({ id: submitModal.id, photos: selectedPhotos });
     };
 
@@ -125,6 +142,14 @@ export default function MyTasks() {
             if (t.has_subtasks && t.subtasks?.some(s => s.status === status)) return true;
             return false;
         }).length;
+    };
+
+    const canAttendSubTask = (parentTask: Task, subTask: Task) => {
+        const ordered = [...(parentTask.subtasks || [])].sort((a, b) => a.id - b.id);
+        const idx = ordered.findIndex(s => s.id === subTask.id);
+        if (idx <= 0) return true;
+        const previous = ordered[idx - 1];
+        return previous.status === 'completed';
     };
 
     return (
@@ -271,6 +296,20 @@ export default function MyTasks() {
                                             <Camera size={14} /> Submit for Approval
                                         </button>
                                     )}
+                                    {t.status === 'in_progress' && t.has_subtasks && (
+                                        <>
+                                            {(t.subtasks || []).every(s => s.status === 'completed') ? (
+                                                <button onClick={() => submitMut.mutate({ id: t.id, photos: [] })}
+                                                    disabled={submitMut.isPending}
+                                                    className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-sm px-4 py-2.5 rounded-lg flex items-center gap-2 transition">
+                                                    {submitMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                                                    Complete Full Task
+                                                </button>
+                                            ) : (
+                                                <span className="text-xs text-gray-400">Complete all sub-tasks to finish full task</span>
+                                            )}
+                                        </>
+                                    )}
                                     {t.status === 'pending_approval' && (
                                         <span className="text-purple-400 text-sm flex items-center gap-1"><Clock size={14} /> Awaiting Approval</span>
                                     )}
@@ -313,7 +352,39 @@ export default function MyTasks() {
                                                     {sub.status === 'in_progress' && (
                                                         <button onClick={() => openSubmitModal(sub)}
                                                             className="bg-purple-600 hover:bg-purple-700 text-white text-xs px-3 py-1.5 rounded-lg flex items-center gap-1 transition">
-                                                            <Camera size={12} /> Submit
+                                                            <Camera size={12} /> Complete Task
+                                                        </button>
+                                                    )}
+                                                    {sub.status === 'pending' && (
+                                                        <button
+                                                            onClick={() => {
+                                                                setGeoError('');
+                                                                if (t.location_lat == null || t.location_lng == null) {
+                                                                    setGeoError('Please go to the work location to attend this sub-task.');
+                                                                    return;
+                                                                }
+                                                                if (!canAttendSubTask(t, sub)) {
+                                                                    setGeoError('Please complete previous sub-task first.');
+                                                                    return;
+                                                                }
+                                                                if (!navigator.geolocation) {
+                                                                    setGeoError('Location is not available on this device/browser.');
+                                                                    return;
+                                                                }
+                                                                navigator.geolocation.getCurrentPosition(
+                                                                    (pos) => startMut.mutate({
+                                                                        id: sub.id,
+                                                                        lat: pos.coords.latitude,
+                                                                        lng: pos.coords.longitude,
+                                                                    }),
+                                                                    () => setGeoError('Please enable location access to attend sub-task.'),
+                                                                    { enableHighAccuracy: true, timeout: 10000 },
+                                                                );
+                                                            }}
+                                                            disabled={!canAttendSubTask(t, sub) || startMut.isPending}
+                                                            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs px-3 py-1.5 rounded-lg flex items-center gap-1 transition"
+                                                        >
+                                                            {startMut.isPending ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />} Attend
                                                         </button>
                                                     )}
                                                     {sub.status === 'completed' && <CheckCircle2 size={14} className="text-green-400" />}
@@ -342,12 +413,16 @@ export default function MyTasks() {
                         <div className="p-5 space-y-4">
                             <div className="bg-gray-800/50 rounded-lg px-4 py-3 border border-gray-700/50">
                                 <p className="text-white font-medium text-sm">{submitModal.title}</p>
-                                <p className="text-gray-500 text-xs mt-1">Upload photos of the completed work for management approval</p>
+                                <p className="text-gray-500 text-xs mt-1">
+                                    {submitMode === 'subtask_complete'
+                                        ? 'Complete this sub-task. Upload proof photos if needed.'
+                                        : 'Upload photos of the completed work for management approval (optional).'}
+                                </p>
                             </div>
 
                             {/* Photo Upload Area */}
                             <div>
-                                <label className="block text-gray-400 text-xs mb-2">Completion Photos *</label>
+                                <label className="block text-gray-400 text-xs mb-2">Completion Photos (optional)</label>
                                 <input
                                     ref={fileInputRef}
                                     type="file"
@@ -390,11 +465,11 @@ export default function MyTasks() {
                                     className="px-4 py-2.5 text-sm text-gray-400 hover:text-white transition">Cancel</button>
                                 <button
                                     onClick={handleSubmitForApproval}
-                                    disabled={selectedPhotos.length === 0 || submitMut.isPending}
+                                    disabled={submitMut.isPending || completeSubtaskMut.isPending}
                                     className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-sm px-6 py-2.5 rounded-lg flex items-center gap-2 transition"
                                 >
-                                    {submitMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-                                    Submit for Approval
+                                    {(submitMut.isPending || completeSubtaskMut.isPending) ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                                    {submitMode === 'subtask_complete' ? 'Complete Task' : 'Submit for Approval'}
                                 </button>
                             </div>
                         </div>

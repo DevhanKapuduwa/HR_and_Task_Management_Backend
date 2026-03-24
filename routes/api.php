@@ -56,6 +56,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('worker/dashboard',                 [WorkerController::class, 'dashboard']);
         Route::get('worker/my-tasks',                  [WorkerController::class, 'myTasks']);
         Route::patch('worker/tasks/{taskId}/start',    [WorkerController::class, 'startTask']);
+        Route::post('worker/tasks/{taskId}/complete-subtask', [WorkerController::class, 'completeSubTask']);
         Route::patch('worker/tasks/{taskId}/complete', [WorkerController::class, 'completeTask']);
         Route::post('worker/tasks/{taskId}/submit-completion', [WorkerController::class, 'submitForApproval']);
         Route::post('worker/clock-in',                 [TimeLogController::class, 'clockIn']);

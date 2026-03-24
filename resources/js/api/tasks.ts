@@ -59,4 +59,14 @@ export const taskApi = {
             headers: { 'Content-Type': 'multipart/form-data' },
         }).then(r => r.data);
     },
+
+    completeSubtask: (id: number, photos: File[]) => {
+        const formData = new FormData();
+        photos.forEach((photo) => {
+            formData.append('photos[]', photo);
+        });
+        return api.post(`/worker/tasks/${id}/complete-subtask`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        }).then(r => r.data);
+    },
 };

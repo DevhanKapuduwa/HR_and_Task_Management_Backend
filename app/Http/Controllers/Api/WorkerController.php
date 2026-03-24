@@ -27,6 +27,21 @@ class WorkerController extends Controller
         return $earthRadius * $c;
     }
 
+    /**
+     * Ensure sub-tasks are worked in sequence (by ID order).
+     */
+    private function hasIncompletePreviousSubtasks(Task $task): bool
+    {
+        if (!$task->parent_id) {
+            return false;
+        }
+
+        return Task::where('parent_id', $task->parent_id)
+            ->where('id', '<', $task->id)
+            ->where('status', '!=', 'completed')
+            ->exists();
+    }
+
     public function index(): JsonResponse
     {
         $workers = User::where('role', 'worker')
@@ -164,6 +179,12 @@ class WorkerController extends Controller
             return response()->json(['message' => 'Task cannot be started'], 400);
         }
 
+        if ($this->hasIncompletePreviousSubtasks($task)) {
+            return response()->json([
+                'message' => 'Please complete previous sub-tasks first.',
+            ], 422);
+        }
+
         if ($task->location_lat === null || $task->location_lng === null) {
             return response()->json(['message' => 'Task has no work location assigned'], 400);
         }
@@ -193,13 +214,66 @@ class WorkerController extends Controller
     }
 
     /**
+     * Worker completes an in-progress sub-task with optional photo proofs.
+     */
+    public function completeSubTask(Request $request, $taskId): JsonResponse
+    {
+        $request->validate([
+            'photos'   => 'nullable|array',
+            'photos.*' => 'required|image|mimes:jpeg,jpg,png,webp|max:10240',
+        ]);
+
+        $task = $request->user()->tasks()->findOrFail($taskId);
+
+        if (!$task->parent_id) {
+            return response()->json(['message' => 'Only sub-tasks can be completed with this action.'], 422);
+        }
+
+        if ($task->status !== 'in_progress') {
+            return response()->json(['message' => 'Sub-task must be in progress first.'], 400);
+        }
+
+        if ($this->hasIncompletePreviousSubtasks($task)) {
+            return response()->json([
+                'message' => 'Please complete previous sub-tasks first.',
+            ], 422);
+        }
+
+        $uploaded = [];
+        if ($request->hasFile('photos')) {
+            $storagePath = 'task-photos/' . $task->id;
+            foreach ($request->file('photos') as $photo) {
+                $path = $photo->store($storagePath, 'public');
+                $uploaded[] = TaskCompletionPhoto::create([
+                    'task_id'    => $task->id,
+                    'photo_path' => $path,
+                    'photo_url'  => asset('storage/' . $path),
+                ]);
+            }
+        }
+
+        $task->update([
+            'status' => 'completed',
+            'approval_notes' => null,
+        ]);
+
+        $task->load('completionPhotos');
+
+        return response()->json([
+            'message' => 'Sub-task completed',
+            'task' => $task,
+            'photos' => $uploaded,
+        ]);
+    }
+
+    /**
      * Worker submits task for completion approval with photos.
      * Photos are stored locally in storage/app/public/task-photos/
      */
     public function submitForApproval(Request $request, $taskId): JsonResponse
     {
         $request->validate([
-            'photos'   => 'required|array|min:1',
+            'photos'   => 'nullable|array',
             'photos.*' => 'required|image|mimes:jpeg,jpg,png,webp|max:10240', // Max 10MB each
         ]);
 
@@ -208,20 +282,34 @@ class WorkerController extends Controller
             return response()->json(['message' => 'Task must be in progress to submit for approval'], 400);
         }
 
+        if ($task->has_subtasks) {
+            $incompleteSubTasks = $task->subtasks()
+                ->where('status', '!=', 'completed')
+                ->exists();
+
+            if ($incompleteSubTasks) {
+                return response()->json([
+                    'message' => 'Complete all sub-tasks before submitting the full task for approval.',
+                ], 422);
+            }
+        }
+
         // Ensure the storage link exists
         $storagePath = 'task-photos/' . $task->id;
 
         // Store each photo
         $photos = [];
-        foreach ($request->file('photos') as $photo) {
-            $path = $photo->store($storagePath, 'public');
-            $url = asset('storage/' . $path);
+        if ($request->hasFile('photos')) {
+            foreach ($request->file('photos') as $photo) {
+                $path = $photo->store($storagePath, 'public');
+                $url = asset('storage/' . $path);
 
-            $photos[] = TaskCompletionPhoto::create([
-                'task_id'    => $task->id,
-                'photo_path' => $path,
-                'photo_url'  => $url,
-            ]);
+                $photos[] = TaskCompletionPhoto::create([
+                    'task_id'    => $task->id,
+                    'photo_path' => $path,
+                    'photo_url'  => $url,
+                ]);
+            }
         }
 
         // Update task status to pending_approval
