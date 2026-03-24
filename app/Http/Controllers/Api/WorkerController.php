@@ -244,19 +244,10 @@ class WorkerController extends Controller
      */
     public function completeTask(Request $request, $taskId): JsonResponse
     {
-        // Redirect to submitForApproval if photos are provided
-        if ($request->hasFile('photos')) {
-            return $this->submitForApproval($request, $taskId);
-        }
-
-        $task = $request->user()->tasks()->findOrFail($taskId);
-        if ($task->status !== 'in_progress') {
-            return response()->json(['message' => 'Task must be in progress first'], 400);
-        }
-
-        // Without photos, still mark as pending_approval
-        $task->update(['status' => 'pending_approval']);
-        return response()->json(['message' => 'Task submitted for approval', 'task' => $task]);
+        // Completion now requires photo evidence and management approval.
+        return response()->json([
+            'message' => 'Use submit-completion with at least one photo to request completion approval.',
+        ], 422);
     }
 
     public function myShift(Request $request): JsonResponse

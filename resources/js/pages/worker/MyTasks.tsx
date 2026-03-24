@@ -229,7 +229,7 @@ export default function MyTasks() {
 
                                 {/* Actions */}
                                 <div className="flex-shrink-0 flex flex-col items-stretch gap-2">
-                                    {t.location_lat && t.location_lng && (
+                                    {t.location_lat != null && t.location_lng != null && (
                                         <button
                                             type="button"
                                             onClick={() => navigate(`/worker/tasks/${t.id}/navigate`)}
@@ -242,7 +242,7 @@ export default function MyTasks() {
                                         <button
                                             onClick={() => {
                                                 setGeoError('');
-                                                if (!t.location_lat || !t.location_lng) {
+                                                if (t.location_lat == null || t.location_lng == null) {
                                                     setGeoError('Please go to the work location to start the work.');
                                                     return;
                                                 }

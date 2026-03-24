@@ -21,11 +21,11 @@ export default function TaskNavigate() {
     useEffect(() => {
         const fetchTask = async () => {
             try {
-                const tasks = await taskApi.myTasks();
-                const found = tasks.find(t => t.id === Number(id));
+                const response = await taskApi.myTasks();
+                const found = response.tasks.find(t => t.id === Number(id));
                 if (!found) {
                     setError('Task not found.');
-                } else if (!found.location_lat || !found.location_lng) {
+                } else if (found.location_lat == null || found.location_lng == null) {
                     setError('This task has no map location assigned by management.');
                 } else {
                     setTask(found);
@@ -50,7 +50,7 @@ export default function TaskNavigate() {
     }, []);
 
     const destination = useMemo(() => {
-        if (!task || !task.location_lat || !task.location_lng) return null;
+        if (!task || task.location_lat == null || task.location_lng == null) return null;
         return { lat: task.location_lat, lng: task.location_lng };
     }, [task]);
 
