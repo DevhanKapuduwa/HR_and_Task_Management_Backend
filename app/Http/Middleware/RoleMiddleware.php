@@ -15,7 +15,8 @@ class RoleMiddleware
             return response()->json(['message' => 'Unauthenticated'], 401);
         }
 
-        if (Auth::user()->role !== $role) {
+        $allowed = array_map('trim', explode(',', $role));
+        if (!in_array(Auth::user()->role, $allowed, true)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 

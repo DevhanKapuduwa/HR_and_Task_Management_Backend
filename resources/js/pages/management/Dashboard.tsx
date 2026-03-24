@@ -4,7 +4,7 @@ import { managementApi } from '../../api/management';
 import { announcementApi } from '../../api/announcements';
 import {
     Users, UserCheck, ClipboardList, Loader2,
-    CheckCircle2, Clock, Megaphone, Send, Trash2, AlertCircle
+    CheckCircle2, Clock, Megaphone, Send, Trash2, AlertCircle, AlertTriangle
 } from 'lucide-react';
 
 const gradients: Record<string, string> = {
@@ -26,6 +26,7 @@ const statusBadge: Record<string, string> = {
     in_progress: 'bg-blue-900/40   text-blue-400   border border-blue-700/50',
     completed: 'bg-green-900/40  text-green-400  border border-green-700/50',
     cancelled: 'bg-red-900/40    text-red-400    border border-red-700/50',
+    pending_approval: 'bg-purple-900/40 text-purple-400 border border-purple-700/50',
 };
 
 const priorityColor: Record<string, string> = {
@@ -72,8 +73,9 @@ export default function ManagementDashboard() {
         { label: 'Active Workers', value: stats.active_workers, icon: UserCheck, color: 'green' },
         { label: 'Pending Tasks', value: stats.pending_tasks, icon: ClipboardList, color: 'yellow' },
         { label: 'In Progress', value: stats.in_progress, icon: Loader2, color: 'purple' },
+        { label: 'Awaiting Approval', value: (stats as any).pending_approval ?? 0, icon: AlertTriangle, color: 'orange' },
         { label: 'Completed Today', value: stats.completed_today, icon: CheckCircle2, color: 'emerald' },
-        { label: 'Clocked In Now', value: stats.clocked_in_now, icon: Clock, color: 'orange' },
+        { label: 'Clocked In Now', value: stats.clocked_in_now, icon: Clock, color: 'blue' },
     ];
 
     return (
@@ -123,8 +125,8 @@ export default function ManagementDashboard() {
                                     <span className={`text-xs font-semibold ${priorityColor[t.priority]}`}>
                                         {t.priority.toUpperCase()}
                                     </span>
-                                    <span className={`px-2.5 py-0.5 rounded-full text-xs whitespace-nowrap ${statusBadge[t.status]}`}>
-                                        {t.status.replace('_', ' ')}
+                                    <span className={`px-2.5 py-0.5 rounded-full text-xs whitespace-nowrap ${statusBadge[t.status] || 'bg-gray-800 text-gray-400'}`}>
+                                        {t.status.replace(/_/g, ' ')}
                                     </span>
                                 </div>
                             ))}

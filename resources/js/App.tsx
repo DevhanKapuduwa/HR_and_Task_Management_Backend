@@ -11,9 +11,13 @@ import Workers from './pages/management/Workers';
 import Tasks from './pages/management/Tasks';
 import TimeLogs from './pages/management/TimeLogs';
 import Reports from './pages/management/Reports';
+import Engagement from './pages/management/Engagement';
+import LeaveApprovals from './pages/management/LeaveApprovals';
 import WorkerDashboard from './pages/worker/Dashboard';
 import MyTasks from './pages/worker/MyTasks';
 import MyHours from './pages/worker/MyHours';
+import TaskNavigate from './pages/worker/TaskNavigate';
+import Leave from './pages/worker/Leave';
 
 const queryClient = new QueryClient();
 
@@ -21,7 +25,7 @@ const RootRedirect = () => {
     const { user, isLoading } = useAuth();
     if (isLoading) return null;
     if (!user) return <Navigate to="/login" replace />;
-    return user.role === 'management'
+    return (user.role === 'management' || user.role === 'supervisor' || user.role === 'hr')
         ? <Navigate to="/management" replace />
         : <Navigate to="/worker" replace />;
 };
@@ -44,6 +48,8 @@ export default function App() {
                             <Route path="workers"     element={<Workers />} />
                             <Route path="tasks"       element={<Tasks />} />
                             <Route path="timelogs"    element={<TimeLogs />} />
+                            <Route path="engagement"  element={<Engagement />} />
+                            <Route path="leave"       element={<LeaveApprovals />} />
                             <Route path="reports"     element={<Reports />} />
                         </Route>
 
@@ -55,6 +61,8 @@ export default function App() {
                             <Route index            element={<WorkerDashboard />} />
                             <Route path="my-tasks"  element={<MyTasks />} />
                             <Route path="my-hours"  element={<MyHours />} />
+                            <Route path="leave"     element={<Leave />} />
+                            <Route path="tasks/:id/navigate" element={<TaskNavigate />} />
                         </Route>
                     </Routes>
                 </BrowserRouter>

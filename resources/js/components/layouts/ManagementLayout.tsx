@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import {
     LayoutDashboard, Users, ClipboardList,
-    Clock, BarChart2, LogOut, Menu, X
+    Clock, BarChart2, LogOut, Menu, X, HeartHandshake, Inbox
 } from 'lucide-react';
 
 const navItems = [
@@ -11,6 +11,8 @@ const navItems = [
     { to: '/management/workers',    label: 'Workers',   icon: Users },
     { to: '/management/tasks',      label: 'Tasks',     icon: ClipboardList },
     { to: '/management/timelogs',   label: 'Time Logs', icon: Clock },
+    { to: '/management/engagement', label: 'Engagement', icon: HeartHandshake },
+    { to: '/management/leave',      label: 'Leave',     icon: Inbox },
     { to: '/management/reports',    label: 'Reports',   icon: BarChart2 },
 ];
 

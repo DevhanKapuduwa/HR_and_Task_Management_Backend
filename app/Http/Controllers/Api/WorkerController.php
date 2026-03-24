@@ -6,12 +6,27 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\Shift;
 use App\Models\TimeLog;
+use App\Models\Task;
+use App\Models\TaskCompletionPhoto;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 
 class WorkerController extends Controller
 {
+    private function haversineMeters(float $lat1, float $lng1, float $lat2, float $lng2): float
+    {
+        $earthRadius = 6371000.0;
+        $dLat = deg2rad($lat2 - $lat1);
+        $dLng = deg2rad($lng2 - $lng1);
+        $a = sin($dLat / 2) * sin($dLat / 2)
+            + cos(deg2rad($lat1)) * cos(deg2rad($lat2))
+            * sin($dLng / 2) * sin($dLng / 2);
+        $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+        return $earthRadius * $c;
+    }
+
     public function index(): JsonResponse
     {
         $workers = User::where('role', 'worker')
@@ -96,6 +111,7 @@ class WorkerController extends Controller
             'in_progress'     => $user->tasks()->where('status', 'in_progress')->count(),
             'completed_today' => $user->tasks()->where('status', 'completed')
                                     ->whereDate('updated_at', today())->count(),
+            'pending_approval'=> $user->tasks()->where('status', 'pending_approval')->count(),
             'hours_this_week' => round(
                 $user->timeLogs()
                     ->whereBetween('clock_in', [now()->startOfWeek(), now()])
@@ -110,29 +126,137 @@ class WorkerController extends Controller
     public function myTasks(Request $request): JsonResponse
     {
         $tasks = $request->user()->tasks()
-                         ->with('manager:id,name')
+                         ->with([
+                             'manager:id,name',
+                             'subtasks.completionPhotos',
+                             'completionPhotos',
+                             'parent:id,title',
+                         ])
+                         ->whereNull('parent_id') // Only top-level tasks
                          ->latest()->get();
-        return response()->json($tasks);
+
+        // Also include sub-tasks assigned to this worker that belong to a parent
+        $subTasks = $request->user()->tasks()
+                            ->with([
+                                'completionPhotos',
+                                'parent:id,title',
+                            ])
+                            ->whereNotNull('parent_id')
+                            ->latest()->get();
+
+        // Merge: top-level tasks already include their subtasks via eager-loading
+        // Return both sets for the frontend to use
+        return response()->json([
+            'tasks' => $tasks,
+            'subtasks' => $subTasks,
+        ]);
     }
 
     public function startTask(Request $request, $taskId): JsonResponse
     {
+        $request->validate([
+            'lat' => 'required|numeric',
+            'lng' => 'required|numeric',
+        ]);
+
         $task = $request->user()->tasks()->findOrFail($taskId);
         if ($task->status !== 'pending') {
             return response()->json(['message' => 'Task cannot be started'], 400);
         }
+
+        if ($task->location_lat === null || $task->location_lng === null) {
+            return response()->json(['message' => 'Task has no work location assigned'], 400);
+        }
+
+        $distance = $this->haversineMeters(
+            (float) $request->lat,
+            (float) $request->lng,
+            (float) $task->location_lat,
+            (float) $task->location_lng,
+        );
+
+        if ($distance > 50) {
+            return response()->json(['message' => 'Please go to the work location to start the work.'], 403);
+        }
+
         $task->update(['status' => 'in_progress']);
+
+        // If this is a sub-task, also start the parent if pending
+        if ($task->parent_id) {
+            $parent = $task->parent;
+            if ($parent->status === 'pending') {
+                $parent->update(['status' => 'in_progress']);
+            }
+        }
+
         return response()->json(['message' => 'Task started', 'task' => $task]);
     }
 
+    /**
+     * Worker submits task for completion approval with photos.
+     * Photos are stored locally in storage/app/public/task-photos/
+     */
+    public function submitForApproval(Request $request, $taskId): JsonResponse
+    {
+        $request->validate([
+            'photos'   => 'required|array|min:1',
+            'photos.*' => 'required|image|mimes:jpeg,jpg,png,webp|max:10240', // Max 10MB each
+        ]);
+
+        $task = $request->user()->tasks()->findOrFail($taskId);
+        if ($task->status !== 'in_progress') {
+            return response()->json(['message' => 'Task must be in progress to submit for approval'], 400);
+        }
+
+        // Ensure the storage link exists
+        $storagePath = 'task-photos/' . $task->id;
+
+        // Store each photo
+        $photos = [];
+        foreach ($request->file('photos') as $photo) {
+            $path = $photo->store($storagePath, 'public');
+            $url = asset('storage/' . $path);
+
+            $photos[] = TaskCompletionPhoto::create([
+                'task_id'    => $task->id,
+                'photo_path' => $path,
+                'photo_url'  => $url,
+            ]);
+        }
+
+        // Update task status to pending_approval
+        $task->update([
+            'status' => 'pending_approval',
+            'approval_notes' => null, // Clear any previous rejection notes
+        ]);
+
+        $task->load('completionPhotos');
+
+        return response()->json([
+            'message' => 'Task submitted for approval',
+            'task' => $task,
+            'photos' => $photos,
+        ]);
+    }
+
+    /**
+     * Legacy complete task — kept for backward compatibility but now redirects to approval.
+     */
     public function completeTask(Request $request, $taskId): JsonResponse
     {
+        // Redirect to submitForApproval if photos are provided
+        if ($request->hasFile('photos')) {
+            return $this->submitForApproval($request, $taskId);
+        }
+
         $task = $request->user()->tasks()->findOrFail($taskId);
         if ($task->status !== 'in_progress') {
             return response()->json(['message' => 'Task must be in progress first'], 400);
         }
-        $task->update(['status' => 'completed']);
-        return response()->json(['message' => 'Task completed!', 'task' => $task]);
+
+        // Without photos, still mark as pending_approval
+        $task->update(['status' => 'pending_approval']);
+        return response()->json(['message' => 'Task submitted for approval', 'task' => $task]);
     }
 
     public function myShift(Request $request): JsonResponse

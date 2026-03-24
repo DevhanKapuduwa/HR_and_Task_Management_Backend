@@ -20,10 +20,11 @@ export const ProtectedRoute = ({ children, requiredRole }: Props) => {
 
     if (!user) return <Navigate to="/login" replace />;
 
-    if (user.role !== requiredRole) {
+    const isManagementSide = user.role === 'management' || user.role === 'supervisor' || user.role === 'hr';
+    if ((requiredRole === 'management' && !isManagementSide) || (requiredRole === 'worker' && user.role !== 'worker')) {
         return (
             <Navigate
-                to={user.role === 'management' ? '/management' : '/worker'}
+                to={isManagementSide ? '/management' : '/worker'}
                 replace
             />
         );

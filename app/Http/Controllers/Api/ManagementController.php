@@ -20,6 +20,7 @@ class ManagementController extends Controller
             'in_progress'     => Task::where('status', 'in_progress')->count(),
             'completed_today' => Task::where('status', 'completed')
                                     ->whereDate('updated_at', today())->count(),
+            'pending_approval'=> Task::where('status', 'pending_approval')->count(),
             'clocked_in_now'  => TimeLog::whereNull('clock_out')->count(),
             'recent_tasks'    => Task::with('worker:id,name,employee_id')
                                     ->latest()->take(8)->get(),

@@ -6,6 +6,8 @@ use App\Models\User;
 use App\Models\Task;
 use App\Models\Shift;
 use App\Models\Announcement;
+use App\Models\LeaveType;
+use App\Models\LeaveBalance;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
@@ -13,6 +15,60 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
+        // Seed default leave types (enum-like codes) if none exist
+        if (LeaveType::count() === 0) {
+            $defaults = [
+                [
+                    'name' => 'Annual Leave',
+                    'code' => 'ANNUAL',
+                    'is_paid' => true,
+                    'requires_attachment' => false,
+                    'is_active' => true,
+                    'approval_chain_roles' => ['supervisor', 'hr', 'management'],
+                    'yearly_entitlement_hours' => 112, // 14 days * 8h
+                    'min_notice_hours' => 24,
+                    'max_consecutive_hours' => 80, // 10 days * 8h
+                ],
+                [
+                    'name' => 'Sick Leave',
+                    'code' => 'SICK',
+                    'is_paid' => true,
+                    'requires_attachment' => true,
+                    'is_active' => true,
+                    'approval_chain_roles' => ['supervisor', 'hr'],
+                    'yearly_entitlement_hours' => 56, // 7 days * 8h
+                    'min_notice_hours' => 0,
+                    'max_consecutive_hours' => 40, // 5 days * 8h
+                ],
+                [
+                    'name' => 'Casual Leave',
+                    'code' => 'CASUAL',
+                    'is_paid' => true,
+                    'requires_attachment' => false,
+                    'is_active' => true,
+                    'approval_chain_roles' => ['supervisor', 'management'],
+                    'yearly_entitlement_hours' => 40, // 5 days * 8h
+                    'min_notice_hours' => 0,
+                    'max_consecutive_hours' => 16, // 2 days * 8h
+                ],
+                [
+                    'name' => 'Unpaid Leave',
+                    'code' => 'UNPAID',
+                    'is_paid' => false,
+                    'requires_attachment' => false,
+                    'is_active' => true,
+                    'approval_chain_roles' => ['supervisor', 'hr', 'management'],
+                    'yearly_entitlement_hours' => 100000, // effectively unlimited
+                    'min_notice_hours' => 0,
+                    'max_consecutive_hours' => null,
+                ],
+            ];
+
+            foreach ($defaults as $d) {
+                LeaveType::create($d);
+            }
+        }
+
         // Create manager
         $manager = User::create([
             'name'        => 'Warehouse Manager',
@@ -47,6 +103,18 @@ class DatabaseSeeder extends Seeder
             'phone'       => '0771112222',
             'is_active'   => true,
         ]);
+
+        // Seed current-year leave balances for workers
+        $year = (int) now()->format('Y');
+        $leaveTypes = LeaveType::where('is_active', true)->get();
+        foreach ([$worker1, $worker2] as $w) {
+            foreach ($leaveTypes as $lt) {
+                LeaveBalance::firstOrCreate(
+                    ['user_id' => $w->id, 'leave_type_id' => $lt->id, 'year' => $year],
+                    ['entitled_hours' => $lt->yearly_entitlement_hours, 'used_hours' => 0]
+                );
+            }
+        }
 
         // Create tasks
         Task::create([
