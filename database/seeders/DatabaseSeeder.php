@@ -24,7 +24,7 @@ class DatabaseSeeder extends Seeder
                     'is_paid' => true,
                     'requires_attachment' => false,
                     'is_active' => true,
-                    'approval_chain_roles' => ['supervisor', 'hr', 'management'],
+                    'approval_chain_roles' => ['supervisor'],
                     'yearly_entitlement_hours' => 112, // 14 days * 8h
                     'min_notice_hours' => 24,
                     'max_consecutive_hours' => 80, // 10 days * 8h
@@ -35,7 +35,7 @@ class DatabaseSeeder extends Seeder
                     'is_paid' => true,
                     'requires_attachment' => true,
                     'is_active' => true,
-                    'approval_chain_roles' => ['supervisor', 'hr'],
+                    'approval_chain_roles' => ['supervisor'],
                     'yearly_entitlement_hours' => 56, // 7 days * 8h
                     'min_notice_hours' => 0,
                     'max_consecutive_hours' => 40, // 5 days * 8h
@@ -46,7 +46,7 @@ class DatabaseSeeder extends Seeder
                     'is_paid' => true,
                     'requires_attachment' => false,
                     'is_active' => true,
-                    'approval_chain_roles' => ['supervisor', 'management'],
+                    'approval_chain_roles' => ['supervisor'],
                     'yearly_entitlement_hours' => 40, // 5 days * 8h
                     'min_notice_hours' => 0,
                     'max_consecutive_hours' => 16, // 2 days * 8h
@@ -57,7 +57,7 @@ class DatabaseSeeder extends Seeder
                     'is_paid' => false,
                     'requires_attachment' => false,
                     'is_active' => true,
-                    'approval_chain_roles' => ['supervisor', 'hr', 'management'],
+                    'approval_chain_roles' => ['supervisor'],
                     'yearly_entitlement_hours' => 100000, // effectively unlimited
                     'min_notice_hours' => 0,
                     'max_consecutive_hours' => null,

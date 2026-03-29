@@ -125,8 +125,8 @@ export default function ManagementDashboard() {
                                             {t.worker?.name ?? '—'} &middot; {t.worker?.employee_id ?? ''}
                                         </p>
                                     </div>
-                                    <span className={`text-xs font-semibold ${priorityColor[t.priority]}`}>
-                                        {t.priority.toUpperCase()}
+                                    <span className={`text-xs font-semibold ${priorityColor[t.priority ?? 'medium']}`}>
+                                        {(t.priority ?? 'medium').toUpperCase()}
                                     </span>
                                     <span className={`px-2.5 py-0.5 rounded-full text-xs whitespace-nowrap ${statusBadge[t.status] || 'bg-gray-800 text-gray-400'}`}>
                                         {t.status.replace(/_/g, ' ')}

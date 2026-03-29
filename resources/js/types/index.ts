@@ -1,8 +1,28 @@
+/** Calendar-month aggregates (standard day = 8h). */
+export interface MonthlyWorkStat {
+    year_month: string;
+    total_hours_worked: number;
+    overtime_hours: number;
+    shortage_minutes: number;
+    /** Full 8h equivalents from cumulative shortage minutes in that month */
+    absenteeism_units: number;
+    /** Leftover shortage below one full 8h unit (hours, one decimal) */
+    shortage_hours_remainder: number;
+}
+
 export interface EmployeeProfileMetrics {
     tenure: { total_days: number; label: string } | null;
     projects_completed: number;
+    /** Overtime this calendar month (hours beyond 8h per day). */
     overtime_hours: number;
+    /** Derived from unapproved absence + lateness vs shift; 8h shortage = 1 unit (this month). */
+    absenteeism_units: number;
+    /** This month: shortage minutes not yet forming a full absenteeism unit (hours). */
+    shortage_hours_remainder: number;
+    total_hours_worked_this_month: number;
+    /** Mean of each month’s `total_hours_worked` from first activity through current month. */
     average_monthly_hours_worked: number;
+    monthly_work_stats?: MonthlyWorkStat[];
     /** Present ÷ (present + absent) across engagement events, 0–100; null if never marked */
     engagement_attendance_pct: number | null;
     /** Derived from engagement_attendance_pct */

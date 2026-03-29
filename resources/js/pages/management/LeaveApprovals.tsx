@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../../context/AuthContext';
 import { leaveApi } from '../../api/leave';
 import type { LeaveRequest, LeaveType } from '../../types';
 import { Loader2, CheckCircle2, XCircle, Inbox, List } from 'lucide-react';
@@ -27,8 +28,22 @@ function fmtDt(d: string) {
     return new Date(d).toLocaleString();
 }
 
+function chainRoles(req: LeaveRequest): string[] {
+    const raw = req.leave_type?.approval_chain_roles ?? req.leaveType?.approval_chain_roles ?? [];
+    if (Array.isArray(raw)) {
+        return [...raw];
+    }
+    if (raw && typeof raw === 'object') {
+        const o = raw as Record<string, string>;
+        return Object.keys(o)
+            .sort((a, b) => Number(a) - Number(b))
+            .map((k) => o[k]);
+    }
+    return [];
+}
+
 function currentStepLabel(req: LeaveRequest): string {
-    const chain = req.leave_type?.approval_chain_roles ?? req.leaveType?.approval_chain_roles ?? [];
+    const chain = chainRoles(req);
     const step = req.current_step ?? 0;
     if (req.status !== 'pending') return '—';
     if (!chain.length) return 'No approval chain';
@@ -37,8 +52,16 @@ function currentStepLabel(req: LeaveRequest): string {
     return `Awaiting ${role} (step ${step + 1} of ${chain.length})`;
 }
 
+function canUserActOnLeave(req: LeaveRequest, userRole: string | undefined): boolean {
+    if (!userRole || req.status !== 'pending') return false;
+    const chain = chainRoles(req);
+    const step = req.current_step ?? 0;
+    return chain[step] === userRole;
+}
+
 export default function LeaveApprovals() {
     const qc = useQueryClient();
+    const { user } = useAuth();
     const [comment, setComment] = useState<Record<number, string>>({});
     const [error, setError] = useState('');
     const [listFilter, setListFilter] = useState<string>('');
@@ -182,6 +205,7 @@ export default function LeaveApprovals() {
                                     <th className="text-right px-4 py-3">Hours</th>
                                     <th className="text-left px-4 py-3">Workflow</th>
                                     <th className="text-center px-4 py-3">Status</th>
+                                    <th className="text-right px-4 py-3">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-800">
@@ -205,6 +229,32 @@ export default function LeaveApprovals() {
                                             <span className={`inline-block px-2 py-0.5 rounded-full text-xs border capitalize ${statusBadge[r.status] ?? statusBadge.pending}`}>
                                                 {r.status}
                                             </span>
+                                        </td>
+                                        <td className="px-4 py-3 text-right">
+                                            {canUserActOnLeave(r, user?.role) ? (
+                                                <div className="flex flex-col items-end gap-2">
+                                                    <div className="flex gap-1 justify-end">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => actMut.mutate({ requestId: r.id, action: 'approved' })}
+                                                            disabled={actMut.isPending}
+                                                            className="text-xs px-2 py-1 rounded bg-green-900/50 text-green-300 border border-green-800 hover:bg-green-800/50 disabled:opacity-50"
+                                                        >
+                                                            Approve
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => actMut.mutate({ requestId: r.id, action: 'rejected' })}
+                                                            disabled={actMut.isPending}
+                                                            className="text-xs px-2 py-1 rounded bg-red-900/50 text-red-300 border border-red-800 hover:bg-red-800/50 disabled:opacity-50"
+                                                        >
+                                                            Reject
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <span className="text-gray-600 text-xs">—</span>
+                                            )}
                                         </td>
                                     </tr>
                                 ))}

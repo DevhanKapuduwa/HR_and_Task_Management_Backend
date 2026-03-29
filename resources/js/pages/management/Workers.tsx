@@ -1,5 +1,6 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../../context/AuthContext';
 import { workerApi } from '../../api/workers';
 import { User } from '../../types';
 import {
@@ -23,6 +24,8 @@ const emptyForm = { name: '', email: '', password: '', employee_id: '', departme
 
 export default function Workers() {
     const qc = useQueryClient();
+    const { user } = useAuth();
+    const canManageWorkers = user?.role === 'management';
     const [search, setSearch] = useState('');
     const [showModal, setShowModal] = useState(false);
     const [editing, setEditing] = useState<User | null>(null);
@@ -147,9 +150,11 @@ export default function Workers() {
                     <Users size={24} className="text-blue-400" /> Workers
                     <span className="text-sm font-normal text-gray-500 ml-2">({workers.length})</span>
                 </h1>
-                <button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2.5 rounded-lg flex items-center gap-2 transition">
-                    <Plus size={16} /> Add Worker
-                </button>
+                {canManageWorkers && (
+                    <button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2.5 rounded-lg flex items-center gap-2 transition">
+                        <Plus size={16} /> Add Worker
+                    </button>
+                )}
             </div>
 
             {/* ── Search ────────────────────────────────── */}
@@ -212,16 +217,25 @@ export default function Workers() {
                                         </span>
                                     </td>
                                     <td className="px-5 py-4 text-center">
-                                        <button
-                                            onClick={() => toggleMut.mutate(w.id)}
-                                            title={w.is_active ? 'Deactivate' : 'Activate'}
-                                            className="transition hover:scale-110"
-                                        >
-                                            {w.is_active
-                                                ? <ToggleRight size={24} className="text-green-400" />
-                                                : <ToggleLeft size={24} className="text-gray-600" />
-                                            }
-                                        </button>
+                                        {canManageWorkers ? (
+                                            <button
+                                                onClick={() => toggleMut.mutate(w.id)}
+                                                title={w.is_active ? 'Deactivate' : 'Activate'}
+                                                className="transition hover:scale-110"
+                                            >
+                                                {w.is_active
+                                                    ? <ToggleRight size={24} className="text-green-400" />
+                                                    : <ToggleLeft size={24} className="text-gray-600" />
+                                                }
+                                            </button>
+                                        ) : (
+                                            <span title={w.is_active ? 'Active' : 'Inactive'}>
+                                                {w.is_active
+                                                    ? <ToggleRight size={24} className="text-green-400/70" />
+                                                    : <ToggleLeft size={24} className="text-gray-600" />
+                                                }
+                                            </span>
+                                        )}
                                     </td>
                                     <td className="px-5 py-4">
                                         <div className="flex items-center justify-end gap-1">
@@ -233,12 +247,16 @@ export default function Workers() {
                                             >
                                                 <UserCircle size={17} />
                                             </button>
-                                            <button onClick={() => openEdit(w)} className="p-2 rounded-lg text-gray-400 hover:text-blue-400 hover:bg-gray-800 transition">
-                                                <Edit2 size={15} />
-                                            </button>
-                                            <button onClick={() => setDeleteConfirm(w.id)} className="p-2 rounded-lg text-gray-400 hover:text-red-400 hover:bg-gray-800 transition">
-                                                <Trash2 size={15} />
-                                            </button>
+                                            {canManageWorkers && (
+                                                <>
+                                                    <button onClick={() => openEdit(w)} className="p-2 rounded-lg text-gray-400 hover:text-blue-400 hover:bg-gray-800 transition">
+                                                        <Edit2 size={15} />
+                                                    </button>
+                                                    <button onClick={() => setDeleteConfirm(w.id)} className="p-2 rounded-lg text-gray-400 hover:text-red-400 hover:bg-gray-800 transition">
+                                                        <Trash2 size={15} />
+                                                    </button>
+                                                </>
+                                            )}
                                         </div>
                                     </td>
                                 </tr>
@@ -394,7 +412,7 @@ export default function Workers() {
                                             Calculated from activity
                                         </h3>
                                         <p className="text-xs text-gray-600 mb-3">
-                                            Work–life balance is derived from engagement &amp; events attendance %.
+                                            Work–life balance uses engagement attendance. Overtime and absenteeism use 8h days, completed clock sessions, and scheduled shifts (lateness vs shift start; missed shift day = 8h shortage). Figures are per calendar month.
                                         </p>
                                         <dl className="space-y-2 text-sm">
                                             <div className="flex justify-between gap-4">
@@ -406,8 +424,20 @@ export default function Workers() {
                                                 <dd className="text-gray-200">{profileDetail.profile_metrics?.projects_completed ?? 0}</dd>
                                             </div>
                                             <div className="flex justify-between gap-4">
-                                                <dt className="text-gray-500">Overtime hours</dt>
+                                                <dt className="text-gray-500">Hours worked (this month)</dt>
+                                                <dd className="text-gray-200">{profileDetail.profile_metrics?.total_hours_worked_this_month ?? 0}</dd>
+                                            </div>
+                                            <div className="flex justify-between gap-4">
+                                                <dt className="text-gray-500">Overtime hours (this month)</dt>
                                                 <dd className="text-gray-200">{profileDetail.profile_metrics?.overtime_hours ?? 0}</dd>
+                                            </div>
+                                            <div className="flex justify-between gap-4">
+                                                <dt className="text-gray-500">Absenteeism units (this month)</dt>
+                                                <dd className="text-gray-200">{profileDetail.profile_metrics?.absenteeism_units ?? 0}</dd>
+                                            </div>
+                                            <div className="flex justify-between gap-4">
+                                                <dt className="text-gray-500">Shortage remainder (this month, h)</dt>
+                                                <dd className="text-gray-200">{profileDetail.profile_metrics?.shortage_hours_remainder ?? 0}</dd>
                                             </div>
                                             <div className="flex justify-between gap-4">
                                                 <dt className="text-gray-500">Avg. monthly hours worked</dt>
@@ -428,128 +458,206 @@ export default function Workers() {
                                                 </dd>
                                             </div>
                                         </dl>
+                                        {profileDetail.profile_metrics?.monthly_work_stats &&
+                                            profileDetail.profile_metrics.monthly_work_stats.length > 0 && (
+                                            <div className="mt-4 pt-4 border-t border-gray-800">
+                                                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">By month</h4>
+                                                <div className="overflow-x-auto text-xs">
+                                                    <table className="w-full text-left border-collapse">
+                                                        <thead>
+                                                            <tr className="text-gray-500 border-b border-gray-800">
+                                                                <th className="py-1 pr-2">Month</th>
+                                                                <th className="py-1 pr-2">Worked (h)</th>
+                                                                <th className="py-1 pr-2">OT (h)</th>
+                                                                <th className="py-1 pr-2">Absent. units</th>
+                                                                <th className="py-1 pr-2">Short. rem. (h)</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {[...profileDetail.profile_metrics.monthly_work_stats].reverse().slice(0, 12).map((row) => (
+                                                                <tr key={row.year_month} className="border-b border-gray-800/60 text-gray-300">
+                                                                    <td className="py-1 pr-2 font-mono">{row.year_month}</td>
+                                                                    <td className="py-1 pr-2">{row.total_hours_worked}</td>
+                                                                    <td className="py-1 pr-2">{row.overtime_hours}</td>
+                                                                    <td className="py-1 pr-2">{row.absenteeism_units}</td>
+                                                                    <td className="py-1 pr-2">{row.shortage_hours_remainder}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        )}
                                     </section>
 
                                     <section>
                                         <h3 className="text-xs font-semibold text-cyan-500/90 uppercase tracking-wider mb-3">
                                             Management fields
                                         </h3>
-                                        {profileErr && (
-                                            <div className="mb-3 bg-red-900/30 border border-red-800 text-red-300 px-3 py-2 rounded-lg text-sm">
-                                                {profileErr}
-                                            </div>
-                                        )}
-                                        <form
-                                            className="space-y-3"
-                                            onSubmit={e => {
-                                                e.preventDefault();
-                                                profileSaveMut.mutate();
-                                            }}
-                                        >
-                                            <div>
-                                                <label className="block text-gray-500 text-xs mb-1">Job role</label>
-                                                <input
-                                                    value={mgrForm.job_role}
-                                                    onChange={e => setMgrForm({ ...mgrForm, job_role: e.target.value })}
-                                                    className="w-full bg-gray-900 text-white text-sm px-3 py-2 rounded-lg border border-gray-800 focus:border-cyan-500 focus:outline-none"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-gray-500 text-xs mb-1">Department *</label>
-                                                <input
-                                                    required
-                                                    value={mgrForm.department}
-                                                    onChange={e => setMgrForm({ ...mgrForm, department: e.target.value })}
-                                                    className="w-full bg-gray-900 text-white text-sm px-3 py-2 rounded-lg border border-gray-800 focus:border-cyan-500 focus:outline-none"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-gray-500 text-xs mb-1">Salary</label>
-                                                <input
-                                                    type="number"
-                                                    min={0}
-                                                    step={0.01}
-                                                    value={mgrForm.salary}
-                                                    onChange={e => setMgrForm({ ...mgrForm, salary: e.target.value })}
-                                                    className="w-full bg-gray-900 text-white text-sm px-3 py-2 rounded-lg border border-gray-800 focus:border-cyan-500 focus:outline-none"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-gray-500 text-xs mb-1">Work location</label>
-                                                <select
-                                                    value={mgrForm.work_location}
-                                                    onChange={e => setMgrForm({ ...mgrForm, work_location: e.target.value })}
-                                                    className="w-full bg-gray-900 text-white text-sm px-3 py-2 rounded-lg border border-gray-800 focus:border-cyan-500 focus:outline-none"
+                                        {canManageWorkers ? (
+                                            <>
+                                                {profileErr && (
+                                                    <div className="mb-3 bg-red-900/30 border border-red-800 text-red-300 px-3 py-2 rounded-lg text-sm">
+                                                        {profileErr}
+                                                    </div>
+                                                )}
+                                                <form
+                                                    className="space-y-3"
+                                                    onSubmit={e => {
+                                                        e.preventDefault();
+                                                        profileSaveMut.mutate();
+                                                    }}
                                                 >
-                                                    <option value="">—</option>
-                                                    <option value="Remote">Remote</option>
-                                                    <option value="On-site">On-site</option>
-                                                    <option value="Hybrid">Hybrid</option>
-                                                </select>
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div>
-                                                    <label className="block text-gray-500 text-xs mb-1">Training hours</label>
-                                                    <input
-                                                        type="number"
-                                                        min={0}
-                                                        value={mgrForm.training_hours}
-                                                        onChange={e => setMgrForm({ ...mgrForm, training_hours: e.target.value })}
-                                                        className="w-full bg-gray-900 text-white text-sm px-3 py-2 rounded-lg border border-gray-800 focus:border-cyan-500 focus:outline-none"
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-gray-500 text-xs mb-1">Promotions</label>
-                                                    <input
-                                                        type="number"
-                                                        min={0}
-                                                        value={mgrForm.promotions}
-                                                        onChange={e => setMgrForm({ ...mgrForm, promotions: e.target.value })}
-                                                        className="w-full bg-gray-900 text-white text-sm px-3 py-2 rounded-lg border border-gray-800 focus:border-cyan-500 focus:outline-none"
-                                                    />
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <label className="block text-gray-500 text-xs mb-1">Absenteeism (days)</label>
-                                                <input
-                                                    type="number"
-                                                    min={0}
-                                                    value={mgrForm.absenteeism}
-                                                    onChange={e => setMgrForm({ ...mgrForm, absenteeism: e.target.value })}
-                                                    className="w-full bg-gray-900 text-white text-sm px-3 py-2 rounded-lg border border-gray-800 focus:border-cyan-500 focus:outline-none"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-gray-500 text-xs mb-1">Distance from home (km)</label>
-                                                <input
-                                                    type="number"
-                                                    min={0}
-                                                    value={mgrForm.distance_from_home}
-                                                    onChange={e => setMgrForm({ ...mgrForm, distance_from_home: e.target.value })}
-                                                    className="w-full bg-gray-900 text-white text-sm px-3 py-2 rounded-lg border border-gray-800 focus:border-cyan-500 focus:outline-none"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-gray-500 text-xs mb-1">Manager feedback score (0–10)</label>
-                                                <input
-                                                    type="number"
-                                                    min={0}
-                                                    max={10}
-                                                    step={0.1}
-                                                    value={mgrForm.manager_feedback_score}
-                                                    onChange={e => setMgrForm({ ...mgrForm, manager_feedback_score: e.target.value })}
-                                                    className="w-full bg-gray-900 text-white text-sm px-3 py-2 rounded-lg border border-gray-800 focus:border-cyan-500 focus:outline-none"
-                                                />
-                                            </div>
-                                            <button
-                                                type="submit"
-                                                disabled={profileSaveMut.isPending}
-                                                className="w-full bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white text-sm py-2.5 rounded-lg flex items-center justify-center gap-2"
-                                            >
-                                                {profileSaveMut.isPending && <Loader2 size={16} className="animate-spin" />}
-                                                Save management fields
-                                            </button>
-                                        </form>
+                                                    <div>
+                                                        <label className="block text-gray-500 text-xs mb-1">Job role</label>
+                                                        <input
+                                                            value={mgrForm.job_role}
+                                                            onChange={e => setMgrForm({ ...mgrForm, job_role: e.target.value })}
+                                                            className="w-full bg-gray-900 text-white text-sm px-3 py-2 rounded-lg border border-gray-800 focus:border-cyan-500 focus:outline-none"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-gray-500 text-xs mb-1">Department *</label>
+                                                        <input
+                                                            required
+                                                            value={mgrForm.department}
+                                                            onChange={e => setMgrForm({ ...mgrForm, department: e.target.value })}
+                                                            className="w-full bg-gray-900 text-white text-sm px-3 py-2 rounded-lg border border-gray-800 focus:border-cyan-500 focus:outline-none"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-gray-500 text-xs mb-1">Salary</label>
+                                                        <input
+                                                            type="number"
+                                                            min={0}
+                                                            step={0.01}
+                                                            value={mgrForm.salary}
+                                                            onChange={e => setMgrForm({ ...mgrForm, salary: e.target.value })}
+                                                            className="w-full bg-gray-900 text-white text-sm px-3 py-2 rounded-lg border border-gray-800 focus:border-cyan-500 focus:outline-none"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-gray-500 text-xs mb-1">Work location</label>
+                                                        <select
+                                                            value={mgrForm.work_location}
+                                                            onChange={e => setMgrForm({ ...mgrForm, work_location: e.target.value })}
+                                                            className="w-full bg-gray-900 text-white text-sm px-3 py-2 rounded-lg border border-gray-800 focus:border-cyan-500 focus:outline-none"
+                                                        >
+                                                            <option value="">—</option>
+                                                            <option value="Remote">Remote</option>
+                                                            <option value="On-site">On-site</option>
+                                                            <option value="Hybrid">Hybrid</option>
+                                                        </select>
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        <div>
+                                                            <label className="block text-gray-500 text-xs mb-1">Training hours</label>
+                                                            <input
+                                                                type="number"
+                                                                min={0}
+                                                                value={mgrForm.training_hours}
+                                                                onChange={e => setMgrForm({ ...mgrForm, training_hours: e.target.value })}
+                                                                className="w-full bg-gray-900 text-white text-sm px-3 py-2 rounded-lg border border-gray-800 focus:border-cyan-500 focus:outline-none"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-gray-500 text-xs mb-1">Promotions</label>
+                                                            <input
+                                                                type="number"
+                                                                min={0}
+                                                                value={mgrForm.promotions}
+                                                                onChange={e => setMgrForm({ ...mgrForm, promotions: e.target.value })}
+                                                                className="w-full bg-gray-900 text-white text-sm px-3 py-2 rounded-lg border border-gray-800 focus:border-cyan-500 focus:outline-none"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-gray-500 text-xs mb-1">Absenteeism (days)</label>
+                                                        <input
+                                                            type="number"
+                                                            min={0}
+                                                            value={mgrForm.absenteeism}
+                                                            onChange={e => setMgrForm({ ...mgrForm, absenteeism: e.target.value })}
+                                                            className="w-full bg-gray-900 text-white text-sm px-3 py-2 rounded-lg border border-gray-800 focus:border-cyan-500 focus:outline-none"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-gray-500 text-xs mb-1">Distance from home (km)</label>
+                                                        <input
+                                                            type="number"
+                                                            min={0}
+                                                            value={mgrForm.distance_from_home}
+                                                            onChange={e => setMgrForm({ ...mgrForm, distance_from_home: e.target.value })}
+                                                            className="w-full bg-gray-900 text-white text-sm px-3 py-2 rounded-lg border border-gray-800 focus:border-cyan-500 focus:outline-none"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-gray-500 text-xs mb-1">Manager feedback score (0–10)</label>
+                                                        <input
+                                                            type="number"
+                                                            min={0}
+                                                            max={10}
+                                                            step={0.1}
+                                                            value={mgrForm.manager_feedback_score}
+                                                            onChange={e => setMgrForm({ ...mgrForm, manager_feedback_score: e.target.value })}
+                                                            className="w-full bg-gray-900 text-white text-sm px-3 py-2 rounded-lg border border-gray-800 focus:border-cyan-500 focus:outline-none"
+                                                        />
+                                                    </div>
+                                                    <button
+                                                        type="submit"
+                                                        disabled={profileSaveMut.isPending}
+                                                        className="w-full bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white text-sm py-2.5 rounded-lg flex items-center justify-center gap-2"
+                                                    >
+                                                        {profileSaveMut.isPending && <Loader2 size={16} className="animate-spin" />}
+                                                        Save management fields
+                                                    </button>
+                                                </form>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <p className="text-xs text-gray-600 mb-3">
+                                                    Read-only. Editing is limited to management accounts.
+                                                </p>
+                                                <dl className="space-y-2 text-sm">
+                                                    <div className="flex justify-between gap-4">
+                                                        <dt className="text-gray-500">Job role</dt>
+                                                        <dd className="text-gray-200 text-right">{profileDetail.job_role ?? '—'}</dd>
+                                                    </div>
+                                                    <div className="flex justify-between gap-4">
+                                                        <dt className="text-gray-500">Department</dt>
+                                                        <dd className="text-gray-200 text-right">{profileDetail.department ?? '—'}</dd>
+                                                    </div>
+                                                    <div className="flex justify-between gap-4">
+                                                        <dt className="text-gray-500">Salary</dt>
+                                                        <dd className="text-gray-200 text-right">{profileDetail.salary ?? '—'}</dd>
+                                                    </div>
+                                                    <div className="flex justify-between gap-4">
+                                                        <dt className="text-gray-500">Work location</dt>
+                                                        <dd className="text-gray-200 text-right">{profileDetail.work_location ?? '—'}</dd>
+                                                    </div>
+                                                    <div className="flex justify-between gap-4">
+                                                        <dt className="text-gray-500">Training hours</dt>
+                                                        <dd className="text-gray-200">{profileDetail.training_hours ?? '—'}</dd>
+                                                    </div>
+                                                    <div className="flex justify-between gap-4">
+                                                        <dt className="text-gray-500">Promotions</dt>
+                                                        <dd className="text-gray-200">{profileDetail.promotions ?? '—'}</dd>
+                                                    </div>
+                                                    <div className="flex justify-between gap-4">
+                                                        <dt className="text-gray-500">Absenteeism (days)</dt>
+                                                        <dd className="text-gray-200">{profileDetail.absenteeism ?? '—'}</dd>
+                                                    </div>
+                                                    <div className="flex justify-between gap-4">
+                                                        <dt className="text-gray-500">Distance from home (km)</dt>
+                                                        <dd className="text-gray-200">{profileDetail.distance_from_home ?? '—'}</dd>
+                                                    </div>
+                                                    <div className="flex justify-between gap-4">
+                                                        <dt className="text-gray-500">Manager feedback score</dt>
+                                                        <dd className="text-gray-200">{profileDetail.manager_feedback_score ?? '—'}</dd>
+                                                    </div>
+                                                </dl>
+                                            </>
+                                        )}
                                     </section>
                                 </>
                             )}

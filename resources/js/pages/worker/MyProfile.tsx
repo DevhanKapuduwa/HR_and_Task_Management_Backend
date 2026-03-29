@@ -206,7 +206,7 @@ export default function MyProfile() {
                         <dd className="text-gray-200">{profile?.promotions ?? '—'}</dd>
                     </div>
                     <div className="flex justify-between gap-4 border-b border-gray-800/80 pb-2">
-                        <dt className="text-gray-500">Absenteeism (days)</dt>
+                        <dt className="text-gray-500">Absenteeism (management)</dt>
                         <dd className="text-gray-200">{profile?.absenteeism ?? '—'}</dd>
                     </div>
                     <div className="flex justify-between gap-4 border-b border-gray-800/80 pb-2">
@@ -224,6 +224,7 @@ export default function MyProfile() {
                 <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Calculated from your activity</h2>
                 <p className="text-xs text-gray-600 -mt-1">
                     Work–life balance follows your engagement &amp; events attendance rate (present ÷ all marks).
+                    Overtime, absence, and lateness vs your scheduled shifts use an 8h standard day and are summed per calendar month.
                 </p>
                 <dl className="grid sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
                     <div className="flex justify-between gap-4 border-b border-gray-800/80 pb-2">
@@ -235,8 +236,20 @@ export default function MyProfile() {
                         <dd className="text-gray-200">{m?.projects_completed ?? 0}</dd>
                     </div>
                     <div className="flex justify-between gap-4 border-b border-gray-800/80 pb-2">
-                        <dt className="text-gray-500">Overtime hours</dt>
+                        <dt className="text-gray-500">Hours worked (this month)</dt>
+                        <dd className="text-gray-200">{m?.total_hours_worked_this_month ?? 0}</dd>
+                    </div>
+                    <div className="flex justify-between gap-4 border-b border-gray-800/80 pb-2">
+                        <dt className="text-gray-500">Overtime hours (this month)</dt>
                         <dd className="text-gray-200">{m?.overtime_hours ?? 0}</dd>
+                    </div>
+                    <div className="flex justify-between gap-4 border-b border-gray-800/80 pb-2">
+                        <dt className="text-gray-500">Absenteeism units (this month)</dt>
+                        <dd className="text-gray-200">{m?.absenteeism_units ?? 0}</dd>
+                    </div>
+                    <div className="flex justify-between gap-4 border-b border-gray-800/80 pb-2">
+                        <dt className="text-gray-500">Shortage remainder (this month, h)</dt>
+                        <dd className="text-gray-200">{m?.shortage_hours_remainder ?? 0}</dd>
                     </div>
                     <div className="flex justify-between gap-4 border-b border-gray-800/80 pb-2">
                         <dt className="text-gray-500">Avg. monthly hours worked</dt>
@@ -253,6 +266,35 @@ export default function MyProfile() {
                         <dd className="text-gray-200 font-medium">{m?.work_life_balance ?? '—'}</dd>
                     </div>
                 </dl>
+                {m?.monthly_work_stats && m.monthly_work_stats.length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-gray-800">
+                        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">By month</h3>
+                        <div className="overflow-x-auto text-xs">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="text-gray-500 border-b border-gray-800">
+                                        <th className="py-1 pr-2">Month</th>
+                                        <th className="py-1 pr-2">Worked (h)</th>
+                                        <th className="py-1 pr-2">OT (h)</th>
+                                        <th className="py-1 pr-2">Absent. units</th>
+                                        <th className="py-1 pr-2">Short. rem. (h)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {[...m.monthly_work_stats].reverse().slice(0, 12).map((row) => (
+                                        <tr key={row.year_month} className="border-b border-gray-800/60 text-gray-300">
+                                            <td className="py-1 pr-2 font-mono">{row.year_month}</td>
+                                            <td className="py-1 pr-2">{row.total_hours_worked}</td>
+                                            <td className="py-1 pr-2">{row.overtime_hours}</td>
+                                            <td className="py-1 pr-2">{row.absenteeism_units}</td>
+                                            <td className="py-1 pr-2">{row.shortage_hours_remainder}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

@@ -162,8 +162,15 @@ class LeaveRequestController extends Controller
     {
         $role = $request->user()->role;
 
-        $pending = LeaveApproval::where('required_role', $role)
+        // Only rows that are the active step: every step is created with action=null,
+        // so without this filter future approvers would see requests not yet at their turn.
+        $pending = LeaveApproval::query()
+            ->where('required_role', $role)
             ->whereNull('action')
+            ->whereHas('leaveRequest', function ($q) {
+                $q->where('status', 'pending')
+                    ->whereColumn('leave_requests.current_step', 'leave_approvals.step_index');
+            })
             ->with([
                 'leaveRequest.user:id,name,employee_id,department',
                 'leaveRequest.leaveType',
@@ -183,19 +190,27 @@ class LeaveRequestController extends Controller
         ]);
 
         $user = $request->user();
-        $type = $leaveRequest->leaveType()->firstOrFail();
-        $chain = $type->approval_chain_roles ?? [];
 
         if ($leaveRequest->status !== 'pending') {
             return response()->json(['message' => 'Request is not pending'], 400);
         }
 
         $step = (int) $leaveRequest->current_step;
-        if (!isset($chain[$step]) || $chain[$step] !== $user->role) {
+
+        /** @var LeaveApproval|null $approval */
+        $approval = LeaveApproval::where('leave_request_id', $leaveRequest->id)
+            ->where('step_index', $step)
+            ->first();
+
+        if (!$approval || $approval->required_role !== $user->role) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
-        return DB::transaction(function () use ($request, $leaveRequest, $user, $chain, $step) {
+        if ($approval->action !== null) {
+            return response()->json(['message' => 'Already acted'], 400);
+        }
+
+        return DB::transaction(function () use ($request, $leaveRequest, $user, $step) {
             /** @var LeaveApproval $approval */
             $approval = LeaveApproval::where('leave_request_id', $leaveRequest->id)
                 ->where('step_index', $step)
@@ -219,8 +234,32 @@ class LeaveRequestController extends Controller
                     'decision_at' => now(),
                 ]);
             } else {
+                // Business rule: supervisor approval finalizes the leave request.
+                // (Even if the leave type has additional roles in its approval chain.)
+                if ($user->role === 'supervisor') {
+                    $leaveRequest->update([
+                        'status' => 'approved',
+                        'decision_at' => now(),
+                        'current_step' => $step + 1,
+                    ]);
+
+                    // Apply balance usage
+                    $year = (int) $leaveRequest->start_at->format('Y');
+                    $balance = LeaveBalance::where('user_id', $leaveRequest->user_id)
+                        ->where('leave_type_id', $leaveRequest->leave_type_id)
+                        ->where('year', $year)
+                        ->lockForUpdate()
+                        ->first();
+
+                    if ($balance) {
+                        $balance->update([
+                            'used_hours' => (int) $balance->used_hours + (int) $leaveRequest->duration_hours,
+                        ]);
+                    }
+                } else {
                 $nextStep = $step + 1;
-                if ($nextStep >= count($chain)) {
+                $totalSteps = (int) LeaveApproval::where('leave_request_id', $leaveRequest->id)->count();
+                if ($nextStep >= $totalSteps) {
                     $leaveRequest->update([
                         'status' => 'approved',
                         'decision_at' => now(),
@@ -244,6 +283,7 @@ class LeaveRequestController extends Controller
                     $leaveRequest->update([
                         'current_step' => $nextStep,
                     ]);
+                }
                 }
             }
 

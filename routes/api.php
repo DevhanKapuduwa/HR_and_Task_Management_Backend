@@ -65,14 +65,17 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('announcements', [AnnouncementController::class, 'store']);
         Route::delete('announcements/{announcement}', [AnnouncementController::class, 'destroy']);
 
+        Route::post('leave/types', [LeaveTypeController::class, 'store']);
+        Route::put('leave/types/{leaveType}', [LeaveTypeController::class, 'update']);
+        Route::delete('leave/types/{leaveType}', [LeaveTypeController::class, 'destroy']);
+    });
+
+    // Engagement events: management owns policy; HR coordinators record attendance and manage events.
+    Route::middleware('role:management,hr')->group(function () {
         Route::post('engagement/events', [EngagementEventController::class, 'store']);
         Route::put('engagement/events/{event}', [EngagementEventController::class, 'update']);
         Route::delete('engagement/events/{event}', [EngagementEventController::class, 'destroy']);
         Route::put('engagement/events/{event}/attendance', [EngagementEventController::class, 'upsertAttendance']);
-
-        Route::post('leave/types', [LeaveTypeController::class, 'store']);
-        Route::put('leave/types/{leaveType}', [LeaveTypeController::class, 'update']);
-        Route::delete('leave/types/{leaveType}', [LeaveTypeController::class, 'destroy']);
     });
 
     // ── Worker only ───────────────────────────────────
