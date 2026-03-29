@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../../context/AuthContext';
 import { managementApi } from '../../api/management';
 import { announcementApi } from '../../api/announcements';
 import {
@@ -35,6 +36,8 @@ const priorityColor: Record<string, string> = {
 
 export default function ManagementDashboard() {
     const qc = useQueryClient();
+    const { user } = useAuth();
+    const canManageAnnouncements = user?.role === 'management';
 
     const { data: stats, isLoading, error } = useQuery({
         queryKey: ['dashboard-stats'],
@@ -152,12 +155,15 @@ export default function ManagementDashboard() {
                                             <p className="font-medium text-sm truncate">{a.title}</p>
                                             <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{a.body}</p>
                                         </div>
-                                        <button
-                                            onClick={() => delAnno.mutate(a.id)}
-                                            className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition flex-shrink-0 mt-0.5"
-                                        >
-                                            <Trash2 size={14} />
-                                        </button>
+                                        {canManageAnnouncements && (
+                                            <button
+                                                type="button"
+                                                onClick={() => delAnno.mutate(a.id)}
+                                                className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition flex-shrink-0 mt-0.5"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        )}
                                     </div>
                                     <p className="text-xs text-gray-600 mt-1">{a.creator?.name} &middot; {a.target}</p>
                                 </div>
@@ -165,40 +171,47 @@ export default function ManagementDashboard() {
                         )}
                     </div>
 
-                    {/* Create Announcement */}
-                    <div className="p-3 border-t border-gray-800 space-y-2">
-                        <input
-                            value={title}
-                            onChange={e => setTitle(e.target.value)}
-                            placeholder="Title"
-                            className="w-full bg-gray-800 text-white text-sm px-3 py-2 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none"
-                        />
-                        <textarea
-                            value={body}
-                            onChange={e => setBody(e.target.value)}
-                            placeholder="Message..."
-                            rows={2}
-                            className="w-full bg-gray-800 text-white text-sm px-3 py-2 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none resize-none"
-                        />
-                        <div className="flex items-center gap-2">
-                            <select
-                                value={target}
-                                onChange={e => setTarget(e.target.value as typeof target)}
-                                className="bg-gray-800 text-gray-300 text-xs px-2 py-1.5 rounded border border-gray-700 focus:outline-none"
-                            >
-                                <option value="all">All</option>
-                                <option value="workers">Workers</option>
-                                <option value="management">Management</option>
-                            </select>
-                            <button
-                                onClick={() => title && body && postAnno.mutate()}
-                                disabled={!title || !body || postAnno.isPending}
-                                className="ml-auto bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs px-3 py-1.5 rounded-lg flex items-center gap-1 transition"
-                            >
-                                <Send size={12} /> Post
-                            </button>
+                    {/* Create Announcement (management only — API enforces the same) */}
+                    {canManageAnnouncements ? (
+                        <div className="p-3 border-t border-gray-800 space-y-2">
+                            <input
+                                value={title}
+                                onChange={e => setTitle(e.target.value)}
+                                placeholder="Title"
+                                className="w-full bg-gray-800 text-white text-sm px-3 py-2 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none"
+                            />
+                            <textarea
+                                value={body}
+                                onChange={e => setBody(e.target.value)}
+                                placeholder="Message..."
+                                rows={2}
+                                className="w-full bg-gray-800 text-white text-sm px-3 py-2 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none resize-none"
+                            />
+                            <div className="flex items-center gap-2">
+                                <select
+                                    value={target}
+                                    onChange={e => setTarget(e.target.value as typeof target)}
+                                    className="bg-gray-800 text-gray-300 text-xs px-2 py-1.5 rounded border border-gray-700 focus:outline-none"
+                                >
+                                    <option value="all">All</option>
+                                    <option value="workers">Workers</option>
+                                    <option value="management">Management</option>
+                                </select>
+                                <button
+                                    type="button"
+                                    onClick={() => title && body && postAnno.mutate()}
+                                    disabled={!title || !body || postAnno.isPending}
+                                    className="ml-auto bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs px-3 py-1.5 rounded-lg flex items-center gap-1 transition"
+                                >
+                                    <Send size={12} /> Post
+                                </button>
+                            </div>
                         </div>
-                    </div>
+                    ) : (
+                        <div className="p-3 border-t border-gray-800 text-xs text-gray-500">
+                            Posting announcements is limited to management accounts.
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

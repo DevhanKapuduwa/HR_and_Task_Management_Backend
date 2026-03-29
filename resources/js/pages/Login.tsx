@@ -24,12 +24,17 @@ export default function Login() {
         setLoading(true);
         try {
             const data = await login(email, password);
-            if (data.user.role !== tab) {
+            const role = data.user.role;
+            const isAdminSide = role === 'management' || role === 'supervisor' || role === 'hr';
+            if (tab === 'management' && !isAdminSide) {
                 logout();
                 setError(
-                    tab === 'management'
-                        ? 'These credentials are for a Worker account. Please use the Worker tab to sign in.'
-                        : 'These credentials are for a Management account. Please use the Management tab to sign in.'
+                    'These credentials are for a Worker account. Please use the Worker tab to sign in.'
+                );
+            } else if (tab === 'worker' && role !== 'worker') {
+                logout();
+                setError(
+                    'These credentials are for a Management / Supervisor / HR account. Please use the Management tab to sign in.'
                 );
             }
         } catch (err: unknown) {

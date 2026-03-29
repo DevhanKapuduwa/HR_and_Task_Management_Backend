@@ -8,13 +8,20 @@ use App\Models\Shift;
 use App\Models\TimeLog;
 use App\Models\Task;
 use App\Models\TaskCompletionPhoto;
+use App\Services\EmployeeProfileMetricsService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Storage;
 
 class WorkerController extends Controller
 {
+    public function __construct(
+        private EmployeeProfileMetricsService $profileMetrics
+    ) {
+    }
+
     private function haversineMeters(float $lat1, float $lng1, float $lat2, float $lng2): float
     {
         $earthRadius = 6371000.0;
@@ -77,12 +84,22 @@ class WorkerController extends Controller
 
     public function show(User $worker): JsonResponse
     {
-        $worker->load(['tasks', 'shifts', 'timeLogs']);
+        if ($worker->role !== 'worker') {
+            abort(404);
+        }
+
+        $worker->loadCount('tasks');
+        $worker->setAttribute('profile_metrics', $this->profileMetrics->all($worker));
+
         return response()->json($worker);
     }
 
     public function update(Request $request, User $worker): JsonResponse
     {
+        if ($worker->role !== 'worker') {
+            abort(404);
+        }
+
         $request->validate([
             'name'        => 'sometimes|string',
             'email'       => 'sometimes|email|unique:users,email,' . $worker->id,
@@ -90,15 +107,86 @@ class WorkerController extends Controller
             'department'  => 'sometimes|string',
             'phone'       => 'nullable|string',
             'password'    => 'nullable|min:6',
+            'job_role'    => 'nullable|string|max:128',
+            'salary'      => 'nullable|numeric|min:0',
+            'work_location' => 'nullable|string|max:32',
+            'training_hours' => 'nullable|integer|min:0|max:65535',
+            'promotions'  => 'nullable|integer|min:0|max:255',
+            'absenteeism' => 'nullable|integer|min:0|max:65535',
+            'distance_from_home' => 'nullable|integer|min:0|max:65535',
+            'manager_feedback_score' => 'nullable|numeric|min:0|max:10',
         ]);
 
-        $data = $request->only(['name', 'email', 'employee_id', 'department', 'phone']);
+        $data = $request->only([
+            'name',
+            'email',
+            'employee_id',
+            'department',
+            'phone',
+            'job_role',
+            'salary',
+            'work_location',
+            'training_hours',
+            'promotions',
+            'absenteeism',
+            'distance_from_home',
+            'manager_feedback_score',
+        ]);
         if ($request->filled('password')) {
             $data['password'] = Hash::make($request->password);
         }
 
         $worker->update($data);
+        $worker->setAttribute('profile_metrics', $this->profileMetrics->all($worker));
+
         return response()->json($worker);
+    }
+
+    /**
+     * Worker: read own profile (includes manager-filled fields as read-only in UI + live metrics).
+     */
+    public function myProfile(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        if ($user->role !== 'worker') {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $user->setAttribute('profile_metrics', $this->profileMetrics->all($user));
+
+        return response()->json($user);
+    }
+
+    /**
+     * Worker: update self-reported profile fields only.
+     */
+    public function updateMyProfile(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        if ($user->role !== 'worker') {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $request->validate([
+            'age'              => 'nullable|integer|min:16|max:120',
+            'gender'           => ['nullable', 'string', Rule::in(['Male', 'Female', 'Other'])],
+            'education_level'  => ['nullable', 'string', Rule::in(['High School', 'Bachelor\'s', 'Master\'s', 'PhD'])],
+            'marital_status'   => ['nullable', 'string', Rule::in(['Single', 'Married', 'Divorced'])],
+            'joined_date'      => 'nullable|date',
+        ]);
+
+        $user->update($request->only([
+            'age',
+            'gender',
+            'education_level',
+            'marital_status',
+            'joined_date',
+        ]));
+
+        $user->refresh();
+        $user->setAttribute('profile_metrics', $this->profileMetrics->all($user));
+
+        return response()->json($user);
     }
 
     public function destroy(User $worker): JsonResponse
@@ -169,12 +257,7 @@ class WorkerController extends Controller
 
     public function startTask(Request $request, $taskId): JsonResponse
     {
-        $request->validate([
-            'lat' => 'required|numeric',
-            'lng' => 'required|numeric',
-        ]);
-
-        $task = $request->user()->tasks()->findOrFail($taskId);
+        $task = $request->user()->tasks()->with('parent')->findOrFail($taskId);
         if ($task->status !== 'pending') {
             return response()->json(['message' => 'Task cannot be started'], 400);
         }
@@ -185,19 +268,43 @@ class WorkerController extends Controller
             ], 422);
         }
 
-        if ($task->location_lat === null || $task->location_lng === null) {
-            return response()->json(['message' => 'Task has no work location assigned'], 400);
-        }
+        // Main task was already started at the job site — do not require a second GPS check for sub-tasks.
+        $skipLocationCheck = $task->parent_id
+            && $task->parent
+            && $task->parent->status === 'in_progress';
 
-        $distance = $this->haversineMeters(
-            (float) $request->lat,
-            (float) $request->lng,
-            (float) $task->location_lat,
-            (float) $task->location_lng,
-        );
+        if ($skipLocationCheck) {
+            $request->validate([
+                'lat' => 'nullable|numeric',
+                'lng' => 'nullable|numeric',
+            ]);
+        } else {
+            $request->validate([
+                'lat' => 'required|numeric',
+                'lng' => 'required|numeric',
+            ]);
 
-        if ($distance > 50) {
-            return response()->json(['message' => 'Please go to the work location to start the work.'], 403);
+            $targetLat = $task->location_lat;
+            $targetLng = $task->location_lng;
+            if (($targetLat === null || $targetLng === null) && $task->parent_id && $task->parent) {
+                $targetLat = $task->parent->location_lat;
+                $targetLng = $task->parent->location_lng;
+            }
+
+            if ($targetLat === null || $targetLng === null) {
+                return response()->json(['message' => 'Task has no work location assigned'], 400);
+            }
+
+            $distance = $this->haversineMeters(
+                (float) $request->lat,
+                (float) $request->lng,
+                (float) $targetLat,
+                (float) $targetLng,
+            );
+
+            if ($distance > 50) {
+                return response()->json(['message' => 'Please go to the work location to start the work.'], 403);
+            }
         }
 
         $task->update(['status' => 'in_progress']);
@@ -210,7 +317,22 @@ class WorkerController extends Controller
             }
         }
 
-        return response()->json(['message' => 'Task started', 'task' => $task]);
+        $user = $request->user();
+        $autoClockedIn = false;
+        if (!TimeLog::where('user_id', $user->id)->whereNull('clock_out')->exists()) {
+            TimeLog::create([
+                'user_id' => $user->id,
+                'task_id' => $task->id,
+                'clock_in' => now(),
+            ]);
+            $autoClockedIn = true;
+        }
+
+        return response()->json([
+            'message' => 'Task started',
+            'task' => $task->fresh(),
+            'auto_clocked_in' => $autoClockedIn,
+        ]);
     }
 
     /**

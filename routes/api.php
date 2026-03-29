@@ -21,34 +21,58 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me',      [AuthController::class, 'me']);
 
-    // ── Management only ───────────────────────────────
+    // ── Management portal: read-only data for supervisor / HR / management ──
+    //    (mutations stay in the management-only group below.)
+    Route::middleware('role:management,supervisor,hr')->group(function () {
+        Route::get('dashboard/stats', [ManagementController::class, 'stats']);
+
+        Route::get('workers', [WorkerController::class, 'index']);
+        Route::get('workers/{worker}', [WorkerController::class, 'show']);
+
+        Route::get('tasks', [TaskController::class, 'index']);
+        Route::get('tasks/{task}', [TaskController::class, 'show']);
+
+        Route::get('time-logs', [TimeLogController::class, 'index']);
+        Route::get('time-logs/{worker}', [TimeLogController::class, 'workerLogs']);
+
+        Route::get('shifts', [ShiftController::class, 'index']);
+
+        Route::get('announcements', [AnnouncementController::class, 'index']);
+
+        Route::get('engagement/events', [EngagementEventController::class, 'index']);
+        Route::get('engagement/events/{event}', [EngagementEventController::class, 'show']);
+    });
+
+    // ── Management only (create / update / delete) ───────────────────────────
     Route::middleware('role:management')->group(function () {
-        Route::get('dashboard/stats',                  [ManagementController::class, 'stats']);
-        Route::apiResource('workers',                  WorkerController::class);
+        Route::post('workers', [WorkerController::class, 'store']);
+        Route::put('workers/{worker}', [WorkerController::class, 'update']);
+        Route::patch('workers/{worker}', [WorkerController::class, 'update']);
+        Route::delete('workers/{worker}', [WorkerController::class, 'destroy']);
         Route::patch('workers/{worker}/toggle-status', [WorkerController::class, 'toggleStatus']);
-        Route::apiResource('tasks',                    TaskController::class);
-        Route::patch('tasks/{task}/status',            [TaskController::class, 'updateStatus']);
-        Route::get('time-logs',                        [TimeLogController::class, 'index']);
-        Route::get('time-logs/{worker}',               [TimeLogController::class, 'workerLogs']);
-        Route::apiResource('shifts',                   ShiftController::class);
-        Route::apiResource('announcements',            AnnouncementController::class);
 
-        // Task completion approval/rejection
+        Route::post('tasks', [TaskController::class, 'store']);
+        Route::put('tasks/{task}', [TaskController::class, 'update']);
+        Route::patch('tasks/{task}', [TaskController::class, 'update']);
+        Route::delete('tasks/{task}', [TaskController::class, 'destroy']);
+        Route::patch('tasks/{task}/status', [TaskController::class, 'updateStatus']);
         Route::patch('tasks/{task}/approve-completion', [TaskController::class, 'approveCompletion']);
-        Route::patch('tasks/{task}/reject-completion',  [TaskController::class, 'rejectCompletion']);
+        Route::patch('tasks/{task}/reject-completion', [TaskController::class, 'rejectCompletion']);
 
-        Route::get('engagement/events',                        [EngagementEventController::class, 'index']);
-        Route::post('engagement/events',                       [EngagementEventController::class, 'store']);
-        Route::get('engagement/events/{event}',                [EngagementEventController::class, 'show']);
-        Route::put('engagement/events/{event}',                [EngagementEventController::class, 'update']);
-        Route::delete('engagement/events/{event}',             [EngagementEventController::class, 'destroy']);
-        Route::put('engagement/events/{event}/attendance',     [EngagementEventController::class, 'upsertAttendance']);
+        Route::post('shifts', [ShiftController::class, 'store']);
+        Route::delete('shifts/{shift}', [ShiftController::class, 'destroy']);
 
-        // Leave management admin (create/update/delete leave types)
-        Route::get('leave/types',                    [LeaveTypeController::class, 'index']);
-        Route::post('leave/types',                   [LeaveTypeController::class, 'store']);
-        Route::put('leave/types/{leaveType}',        [LeaveTypeController::class, 'update']);
-        Route::delete('leave/types/{leaveType}',     [LeaveTypeController::class, 'destroy']);
+        Route::post('announcements', [AnnouncementController::class, 'store']);
+        Route::delete('announcements/{announcement}', [AnnouncementController::class, 'destroy']);
+
+        Route::post('engagement/events', [EngagementEventController::class, 'store']);
+        Route::put('engagement/events/{event}', [EngagementEventController::class, 'update']);
+        Route::delete('engagement/events/{event}', [EngagementEventController::class, 'destroy']);
+        Route::put('engagement/events/{event}/attendance', [EngagementEventController::class, 'upsertAttendance']);
+
+        Route::post('leave/types', [LeaveTypeController::class, 'store']);
+        Route::put('leave/types/{leaveType}', [LeaveTypeController::class, 'update']);
+        Route::delete('leave/types/{leaveType}', [LeaveTypeController::class, 'destroy']);
     });
 
     // ── Worker only ───────────────────────────────────
@@ -63,6 +87,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('worker/clock-out',                [TimeLogController::class, 'clockOut']);
         Route::get('worker/my-hours',                  [TimeLogController::class, 'myHours']);
         Route::get('worker/my-shift',                  [WorkerController::class, 'myShift']);
+        Route::get('worker/profile',                 [WorkerController::class, 'myProfile']);
+        Route::patch('worker/profile',               [WorkerController::class, 'updateMyProfile']);
 
         // Leave requests (worker)
         Route::get('worker/leave/types', [LeaveTypeController::class, 'active']);
@@ -73,6 +99,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Approvers: supervisor/hr/management (role-based chain)
     Route::middleware('role:supervisor,hr,management')->group(function () {
+        Route::get('leave/requests', [LeaveRequestController::class, 'adminIndex']);
         Route::get('leave/inbox', [LeaveRequestController::class, 'inbox']);
         Route::post('leave/requests/{leaveRequest}/act', [LeaveRequestController::class, 'act']);
         Route::get('leave/types', [LeaveTypeController::class, 'index']);

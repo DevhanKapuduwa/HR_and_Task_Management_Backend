@@ -1,11 +1,23 @@
-import { useState } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { workerApi } from '../../api/workers';
 import { User } from '../../types';
 import {
     Plus, Edit2, Trash2, Search, X,
-    ToggleLeft, ToggleRight, Loader2, Users
+    ToggleLeft, ToggleRight, Loader2, Users, UserCircle,
 } from 'lucide-react';
+
+const emptyMgrForm = {
+    job_role: '',
+    department: '',
+    salary: '',
+    work_location: '',
+    training_hours: '',
+    promotions: '',
+    absenteeism: '',
+    distance_from_home: '',
+    manager_feedback_score: '',
+};
 
 const emptyForm = { name: '', email: '', password: '', employee_id: '', department: '', phone: '' };
 
@@ -17,6 +29,9 @@ export default function Workers() {
     const [form, setForm] = useState(emptyForm);
     const [formError, setFormError] = useState('');
     const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+    const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
+    const [mgrForm, setMgrForm] = useState(emptyMgrForm);
+    const [profileErr, setProfileErr] = useState('');
 
     const { data: workers = [], isLoading } = useQuery({
         queryKey: ['workers'],
@@ -45,6 +60,52 @@ export default function Workers() {
         onSuccess: () => qc.invalidateQueries({ queryKey: ['workers'] }),
     });
 
+    const { data: profileDetail, isLoading: profileLoading } = useQuery({
+        queryKey: ['worker', selectedProfileId],
+        queryFn: () => workerApi.getById(selectedProfileId!),
+        enabled: selectedProfileId !== null,
+    });
+
+    useEffect(() => {
+        if (!profileDetail) return;
+        setMgrForm({
+            job_role: profileDetail.job_role ?? '',
+            department: profileDetail.department ?? '',
+            salary: profileDetail.salary != null && profileDetail.salary !== '' ? String(profileDetail.salary) : '',
+            work_location: profileDetail.work_location ?? '',
+            training_hours: profileDetail.training_hours != null ? String(profileDetail.training_hours) : '',
+            promotions: profileDetail.promotions != null ? String(profileDetail.promotions) : '',
+            absenteeism: profileDetail.absenteeism != null ? String(profileDetail.absenteeism) : '',
+            distance_from_home: profileDetail.distance_from_home != null ? String(profileDetail.distance_from_home) : '',
+            manager_feedback_score:
+                profileDetail.manager_feedback_score != null && profileDetail.manager_feedback_score !== ''
+                    ? String(profileDetail.manager_feedback_score)
+                    : '',
+        });
+    }, [profileDetail]);
+
+    const profileSaveMut = useMutation({
+        mutationFn: () =>
+            workerApi.update(selectedProfileId!, {
+                job_role: mgrForm.job_role || undefined,
+                department: mgrForm.department,
+                salary: mgrForm.salary === '' ? undefined : Number(mgrForm.salary),
+                work_location: mgrForm.work_location || undefined,
+                training_hours: mgrForm.training_hours === '' ? undefined : Number(mgrForm.training_hours),
+                promotions: mgrForm.promotions === '' ? undefined : Number(mgrForm.promotions),
+                absenteeism: mgrForm.absenteeism === '' ? undefined : Number(mgrForm.absenteeism),
+                distance_from_home: mgrForm.distance_from_home === '' ? undefined : Number(mgrForm.distance_from_home),
+                manager_feedback_score:
+                    mgrForm.manager_feedback_score === '' ? undefined : Number(mgrForm.manager_feedback_score),
+            }),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ['worker', selectedProfileId] });
+            qc.invalidateQueries({ queryKey: ['workers'] });
+            setProfileErr('');
+        },
+        onError: (e: any) => setProfileErr(e.response?.data?.message || 'Save failed'),
+    });
+
     const close = () => { setShowModal(false); setEditing(null); setForm(emptyForm); setFormError(''); };
 
     const openCreate = () => { setEditing(null); setForm(emptyForm); setFormError(''); setShowModal(true); };
@@ -56,7 +117,7 @@ export default function Workers() {
         setShowModal(true);
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
         setFormError('');
         if (editing) {
@@ -164,6 +225,14 @@ export default function Workers() {
                                     </td>
                                     <td className="px-5 py-4">
                                         <div className="flex items-center justify-end gap-1">
+                                            <button
+                                                type="button"
+                                                title="Employee profile"
+                                                onClick={() => { setSelectedProfileId(w.id); setProfileErr(''); }}
+                                                className="p-2 rounded-lg text-gray-400 hover:text-cyan-400 hover:bg-gray-800 transition"
+                                            >
+                                                <UserCircle size={17} />
+                                            </button>
                                             <button onClick={() => openEdit(w)} className="p-2 rounded-lg text-gray-400 hover:text-blue-400 hover:bg-gray-800 transition">
                                                 <Edit2 size={15} />
                                             </button>
@@ -246,6 +315,249 @@ export default function Workers() {
             )}
 
             {/* ── Delete Confirm ────────────────────────── */}
+            {/* ── Employee profile (management) ─────────── */}
+            {selectedProfileId !== null && (
+                <div className="fixed inset-0 z-50 flex justify-end bg-black/50" onClick={() => setSelectedProfileId(null)}>
+                    <div
+                        className="w-full max-w-xl h-full bg-gray-950 border-l border-gray-800 shadow-2xl overflow-y-auto"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="sticky top-0 bg-gray-950/95 backdrop-blur border-b border-gray-800 px-5 py-4 flex items-center justify-between z-10">
+                            <h2 className="text-lg font-bold flex items-center gap-2">
+                                <UserCircle size={22} className="text-cyan-400" /> Employee profile
+                            </h2>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedProfileId(null)}
+                                className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-gray-800"
+                            >
+                                <X size={22} />
+                            </button>
+                        </div>
+
+                        <div className="p-5 space-y-8 pb-24">
+                            {profileLoading || !profileDetail ? (
+                                <div className="flex justify-center py-20">
+                                    <Loader2 className="animate-spin text-cyan-400" size={28} />
+                                </div>
+                            ) : (
+                                <>
+                                    <section>
+                                        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Identity</h3>
+                                        <dl className="space-y-2 text-sm">
+                                            <div className="flex justify-between gap-4">
+                                                <dt className="text-gray-500">Employee ID</dt>
+                                                <dd className="font-mono text-gray-200">{profileDetail.employee_id}</dd>
+                                            </div>
+                                            <div className="flex justify-between gap-4">
+                                                <dt className="text-gray-500">Name</dt>
+                                                <dd className="text-gray-200">{profileDetail.name}</dd>
+                                            </div>
+                                        </dl>
+                                    </section>
+
+                                    <section>
+                                        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                                            Employee-entered
+                                        </h3>
+                                        <p className="text-xs text-gray-600 mb-3">Workers update these in My Profile. Read-only here.</p>
+                                        <dl className="space-y-2 text-sm">
+                                            <div className="flex justify-between gap-4">
+                                                <dt className="text-gray-500">Age</dt>
+                                                <dd className="text-gray-200">{profileDetail.age ?? '—'}</dd>
+                                            </div>
+                                            <div className="flex justify-between gap-4">
+                                                <dt className="text-gray-500">Gender</dt>
+                                                <dd className="text-gray-200">{profileDetail.gender ?? '—'}</dd>
+                                            </div>
+                                            <div className="flex justify-between gap-4">
+                                                <dt className="text-gray-500">Education</dt>
+                                                <dd className="text-gray-200 text-right">{profileDetail.education_level ?? '—'}</dd>
+                                            </div>
+                                            <div className="flex justify-between gap-4">
+                                                <dt className="text-gray-500">Marital status</dt>
+                                                <dd className="text-gray-200">{profileDetail.marital_status ?? '—'}</dd>
+                                            </div>
+                                            <div className="flex justify-between gap-4">
+                                                <dt className="text-gray-500">Joined date</dt>
+                                                <dd className="text-gray-200">
+                                                    {profileDetail.joined_date
+                                                        ? String(profileDetail.joined_date).slice(0, 10)
+                                                        : '—'}
+                                                </dd>
+                                            </div>
+                                        </dl>
+                                    </section>
+
+                                    <section>
+                                        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                                            Calculated from activity
+                                        </h3>
+                                        <p className="text-xs text-gray-600 mb-3">
+                                            Work–life balance is derived from engagement &amp; events attendance %.
+                                        </p>
+                                        <dl className="space-y-2 text-sm">
+                                            <div className="flex justify-between gap-4">
+                                                <dt className="text-gray-500">Tenure</dt>
+                                                <dd className="text-gray-200">{profileDetail.profile_metrics?.tenure?.label ?? '—'}</dd>
+                                            </div>
+                                            <div className="flex justify-between gap-4">
+                                                <dt className="text-gray-500">Projects completed</dt>
+                                                <dd className="text-gray-200">{profileDetail.profile_metrics?.projects_completed ?? 0}</dd>
+                                            </div>
+                                            <div className="flex justify-between gap-4">
+                                                <dt className="text-gray-500">Overtime hours</dt>
+                                                <dd className="text-gray-200">{profileDetail.profile_metrics?.overtime_hours ?? 0}</dd>
+                                            </div>
+                                            <div className="flex justify-between gap-4">
+                                                <dt className="text-gray-500">Avg. monthly hours worked</dt>
+                                                <dd className="text-gray-200">{profileDetail.profile_metrics?.average_monthly_hours_worked ?? 0}</dd>
+                                            </div>
+                                            <div className="flex justify-between gap-4">
+                                                <dt className="text-gray-500">Engagement attendance %</dt>
+                                                <dd className="text-gray-200">
+                                                    {profileDetail.profile_metrics?.engagement_attendance_pct != null
+                                                        ? `${profileDetail.profile_metrics.engagement_attendance_pct}%`
+                                                        : '—'}
+                                                </dd>
+                                            </div>
+                                            <div className="flex justify-between gap-4">
+                                                <dt className="text-gray-500">Work–life balance</dt>
+                                                <dd className="text-gray-200 font-medium">
+                                                    {profileDetail.profile_metrics?.work_life_balance ?? '—'}
+                                                </dd>
+                                            </div>
+                                        </dl>
+                                    </section>
+
+                                    <section>
+                                        <h3 className="text-xs font-semibold text-cyan-500/90 uppercase tracking-wider mb-3">
+                                            Management fields
+                                        </h3>
+                                        {profileErr && (
+                                            <div className="mb-3 bg-red-900/30 border border-red-800 text-red-300 px-3 py-2 rounded-lg text-sm">
+                                                {profileErr}
+                                            </div>
+                                        )}
+                                        <form
+                                            className="space-y-3"
+                                            onSubmit={e => {
+                                                e.preventDefault();
+                                                profileSaveMut.mutate();
+                                            }}
+                                        >
+                                            <div>
+                                                <label className="block text-gray-500 text-xs mb-1">Job role</label>
+                                                <input
+                                                    value={mgrForm.job_role}
+                                                    onChange={e => setMgrForm({ ...mgrForm, job_role: e.target.value })}
+                                                    className="w-full bg-gray-900 text-white text-sm px-3 py-2 rounded-lg border border-gray-800 focus:border-cyan-500 focus:outline-none"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-gray-500 text-xs mb-1">Department *</label>
+                                                <input
+                                                    required
+                                                    value={mgrForm.department}
+                                                    onChange={e => setMgrForm({ ...mgrForm, department: e.target.value })}
+                                                    className="w-full bg-gray-900 text-white text-sm px-3 py-2 rounded-lg border border-gray-800 focus:border-cyan-500 focus:outline-none"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-gray-500 text-xs mb-1">Salary</label>
+                                                <input
+                                                    type="number"
+                                                    min={0}
+                                                    step={0.01}
+                                                    value={mgrForm.salary}
+                                                    onChange={e => setMgrForm({ ...mgrForm, salary: e.target.value })}
+                                                    className="w-full bg-gray-900 text-white text-sm px-3 py-2 rounded-lg border border-gray-800 focus:border-cyan-500 focus:outline-none"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-gray-500 text-xs mb-1">Work location</label>
+                                                <select
+                                                    value={mgrForm.work_location}
+                                                    onChange={e => setMgrForm({ ...mgrForm, work_location: e.target.value })}
+                                                    className="w-full bg-gray-900 text-white text-sm px-3 py-2 rounded-lg border border-gray-800 focus:border-cyan-500 focus:outline-none"
+                                                >
+                                                    <option value="">—</option>
+                                                    <option value="Remote">Remote</option>
+                                                    <option value="On-site">On-site</option>
+                                                    <option value="Hybrid">Hybrid</option>
+                                                </select>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div>
+                                                    <label className="block text-gray-500 text-xs mb-1">Training hours</label>
+                                                    <input
+                                                        type="number"
+                                                        min={0}
+                                                        value={mgrForm.training_hours}
+                                                        onChange={e => setMgrForm({ ...mgrForm, training_hours: e.target.value })}
+                                                        className="w-full bg-gray-900 text-white text-sm px-3 py-2 rounded-lg border border-gray-800 focus:border-cyan-500 focus:outline-none"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-gray-500 text-xs mb-1">Promotions</label>
+                                                    <input
+                                                        type="number"
+                                                        min={0}
+                                                        value={mgrForm.promotions}
+                                                        onChange={e => setMgrForm({ ...mgrForm, promotions: e.target.value })}
+                                                        className="w-full bg-gray-900 text-white text-sm px-3 py-2 rounded-lg border border-gray-800 focus:border-cyan-500 focus:outline-none"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="block text-gray-500 text-xs mb-1">Absenteeism (days)</label>
+                                                <input
+                                                    type="number"
+                                                    min={0}
+                                                    value={mgrForm.absenteeism}
+                                                    onChange={e => setMgrForm({ ...mgrForm, absenteeism: e.target.value })}
+                                                    className="w-full bg-gray-900 text-white text-sm px-3 py-2 rounded-lg border border-gray-800 focus:border-cyan-500 focus:outline-none"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-gray-500 text-xs mb-1">Distance from home (km)</label>
+                                                <input
+                                                    type="number"
+                                                    min={0}
+                                                    value={mgrForm.distance_from_home}
+                                                    onChange={e => setMgrForm({ ...mgrForm, distance_from_home: e.target.value })}
+                                                    className="w-full bg-gray-900 text-white text-sm px-3 py-2 rounded-lg border border-gray-800 focus:border-cyan-500 focus:outline-none"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-gray-500 text-xs mb-1">Manager feedback score (0–10)</label>
+                                                <input
+                                                    type="number"
+                                                    min={0}
+                                                    max={10}
+                                                    step={0.1}
+                                                    value={mgrForm.manager_feedback_score}
+                                                    onChange={e => setMgrForm({ ...mgrForm, manager_feedback_score: e.target.value })}
+                                                    className="w-full bg-gray-900 text-white text-sm px-3 py-2 rounded-lg border border-gray-800 focus:border-cyan-500 focus:outline-none"
+                                                />
+                                            </div>
+                                            <button
+                                                type="submit"
+                                                disabled={profileSaveMut.isPending}
+                                                className="w-full bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white text-sm py-2.5 rounded-lg flex items-center justify-center gap-2"
+                                            >
+                                                {profileSaveMut.isPending && <Loader2 size={16} className="animate-spin" />}
+                                                Save management fields
+                                            </button>
+                                        </form>
+                                    </section>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {deleteConfirm !== null && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setDeleteConfirm(null)}>
                     <div className="bg-gray-900 rounded-2xl border border-gray-800 p-6 w-full max-w-sm shadow-2xl text-center" onClick={e => e.stopPropagation()}>

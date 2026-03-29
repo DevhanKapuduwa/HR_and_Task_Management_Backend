@@ -7,6 +7,7 @@ use App\Models\LeaveApproval;
 use App\Models\LeaveBalance;
 use App\Models\LeaveRequest;
 use App\Models\LeaveType;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -61,16 +62,40 @@ class LeaveRequestController extends Controller
             return response()->json(['message' => 'Leave type is not active'], 400);
         }
 
+        $rangeStart = Carbon::parse($request->start_at)->startOfDay();
+        $rangeEnd = Carbon::parse($request->end_at)->startOfDay();
+        $calendarDays = (int) $rangeStart->diffInDays($rangeEnd) + 1;
+
+        if ($calendarDays < 1 || $calendarDays > 62) {
+            return response()->json(['message' => 'Leave range spans an invalid number of days'], 400);
+        }
+
+        $totalHours = (int) $request->duration_hours;
+
+        if ($totalHours > 8 * $calendarDays) {
+            return response()->json(['message' => 'Leave cannot exceed 8 hours per calendar day in the selected range'], 400);
+        }
+
+        if ($totalHours % $calendarDays !== 0) {
+            return response()->json(['message' => 'Total hours must split evenly across each day in the range (same hours every day).'], 422);
+        }
+
+        $hoursPerDay = intdiv($totalHours, $calendarDays);
+
+        if ($hoursPerDay < 1 || $hoursPerDay > 8) {
+            return response()->json(['message' => 'Hours per day must be between 1 and 8'], 422);
+        }
+
         // Notice policy
         if ($type->min_notice_hours > 0) {
             $minStart = now()->addHours($type->min_notice_hours);
-            if (now()->parse($request->start_at)->lt($minStart)) {
+            if (Carbon::parse($request->start_at)->lt($minStart)) {
                 return response()->json(['message' => 'Leave request does not meet minimum notice period'], 400);
             }
         }
 
-        if ($type->max_consecutive_hours !== null && $request->duration_hours > $type->max_consecutive_hours) {
-            return response()->json(['message' => 'Leave request exceeds max consecutive hours'], 400);
+        if ($type->max_consecutive_hours !== null && $hoursPerDay > $type->max_consecutive_hours) {
+            return response()->json(['message' => 'Leave request exceeds max hours per day for this leave type'], 400);
         }
 
         $year = (int) now()->parse($request->start_at)->format('Y');
@@ -110,6 +135,26 @@ class LeaveRequestController extends Controller
             $lr->load(['leaveType', 'approvals']);
             return response()->json($lr, 201);
         });
+    }
+
+    /**
+     * Management-facing: all leave requests (visibility independent of approval step).
+     */
+    public function adminIndex(Request $request): JsonResponse
+    {
+        $q = LeaveRequest::query()
+            ->with([
+                'user:id,name,email,employee_id,department',
+                'leaveType',
+                'approvals' => fn ($qq) => $qq->orderBy('step_index'),
+            ])
+            ->orderByDesc('created_at');
+
+        if ($request->filled('status') && in_array($request->status, ['pending', 'approved', 'rejected', 'cancelled'], true)) {
+            $q->where('status', $request->status);
+        }
+
+        return response()->json($q->limit(500)->get());
     }
 
     // Approver (role-based): list pending approvals for my role

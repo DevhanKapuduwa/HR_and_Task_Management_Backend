@@ -1,12 +1,13 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { LayoutDashboard, ClipboardList, Clock, LogOut, CalendarDays } from 'lucide-react';
+import { LayoutDashboard, ClipboardList, Clock, LogOut, CalendarDays, UserCircle } from 'lucide-react';
 
 const navItems = [
     { to: '/worker',            label: 'Dashboard', icon: LayoutDashboard, end: true },
     { to: '/worker/my-tasks',   label: 'My Tasks',  icon: ClipboardList },
     { to: '/worker/my-hours',   label: 'My Hours',  icon: Clock },
     { to: '/worker/leave',      label: 'Leave',     icon: CalendarDays },
+    { to: '/worker/profile',   label: 'My Profile', icon: UserCircle },
 ];
 
 export default function WorkerLayout() {

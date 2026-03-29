@@ -18,6 +18,7 @@ import MyTasks from './pages/worker/MyTasks';
 import MyHours from './pages/worker/MyHours';
 import TaskNavigate from './pages/worker/TaskNavigate';
 import Leave from './pages/worker/Leave';
+import MyProfile from './pages/worker/MyProfile';
 
 const queryClient = new QueryClient();
 
@@ -62,6 +63,7 @@ export default function App() {
                             <Route path="my-tasks"  element={<MyTasks />} />
                             <Route path="my-hours"  element={<MyHours />} />
                             <Route path="leave"     element={<Leave />} />
+                            <Route path="profile" element={<MyProfile />} />
                             <Route path="tasks/:id/navigate" element={<TaskNavigate />} />
                         </Route>
                     </Routes>

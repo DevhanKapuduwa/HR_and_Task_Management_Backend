@@ -81,6 +81,8 @@ class DatabaseSeeder extends Seeder
             'is_active'   => true,
         ]);
 
+        $this->call(SupervisorHrUserSeeder::class);
+
         // Create workers
         $worker1 = User::create([
             'name'        => 'John Silva',

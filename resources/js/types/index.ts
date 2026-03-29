@@ -1,3 +1,14 @@
+export interface EmployeeProfileMetrics {
+    tenure: { total_days: number; label: string } | null;
+    projects_completed: number;
+    overtime_hours: number;
+    average_monthly_hours_worked: number;
+    /** Present ÷ (present + absent) across engagement events, 0–100; null if never marked */
+    engagement_attendance_pct: number | null;
+    /** Derived from engagement_attendance_pct */
+    work_life_balance: 'Poor' | 'Average' | 'Good' | 'Excellent' | null;
+}
+
 export interface User {
     id: number;
     name: string;
@@ -10,7 +21,40 @@ export interface User {
     avatar?: string;
     tasks_count?: number;
     created_at: string;
+    updated_at?: string;
+    /** Self-reported (worker) */
+    age?: number | null;
+    gender?: string | null;
+    education_level?: string | null;
+    marital_status?: string | null;
+    joined_date?: string | null;
+    /** Manager-maintained */
+    job_role?: string | null;
+    salary?: string | number | null;
+    work_location?: string | null;
+    training_hours?: number | null;
+    promotions?: number | null;
+    absenteeism?: number | null;
+    distance_from_home?: number | null;
+    manager_feedback_score?: string | number | null;
+    profile_metrics?: EmployeeProfileMetrics;
 }
+
+export type ManagerProfileFields = Pick<User,
+    | 'job_role'
+    | 'department'
+    | 'salary'
+    | 'work_location'
+    | 'training_hours'
+    | 'promotions'
+    | 'absenteeism'
+    | 'distance_from_home'
+    | 'manager_feedback_score'
+>;
+
+export type WorkerSelfProfileFields = Pick<User,
+    'age' | 'gender' | 'education_level' | 'marital_status' | 'joined_date'
+>;
 
 export interface LeaveType {
     id: number;

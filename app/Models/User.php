@@ -21,6 +21,19 @@ class User extends Authenticatable
         'phone',
         'is_active',
         'avatar',
+        'age',
+        'gender',
+        'education_level',
+        'marital_status',
+        'joined_date',
+        'job_role',
+        'salary',
+        'work_location',
+        'training_hours',
+        'promotions',
+        'absenteeism',
+        'distance_from_home',
+        'manager_feedback_score',
     ];
 
     protected $hidden = [
@@ -30,6 +43,9 @@ class User extends Authenticatable
 
     protected $casts = [
         'is_active' => 'boolean',
+        'joined_date' => 'date',
+        'salary' => 'decimal:2',
+        'manager_feedback_score' => 'decimal:1',
     ];
 
     // ── Relationships ─────────────────────────────────

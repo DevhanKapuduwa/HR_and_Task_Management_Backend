@@ -44,7 +44,8 @@ export const taskApi = {
     myTasks: () =>
         api.get<MyTasksResponse>('/worker/my-tasks').then(r => r.data),
 
-    start: (id: number, coords: { lat: number; lng: number }) =>
+    /** Omit coords when the parent task is already in progress (sub-task attend without a second GPS check). */
+    start: (id: number, coords: { lat?: number; lng?: number } = {}) =>
         api.patch(`/worker/tasks/${id}/start`, coords).then(r => r.data),
 
     complete: (id: number) =>

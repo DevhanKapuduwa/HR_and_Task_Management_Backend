@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../../context/AuthContext';
 import { taskApi } from '../../api/tasks';
 import { workerApi } from '../../api/workers';
 import { timeLogApi } from '../../api/timeLogs';
@@ -9,6 +10,8 @@ import { BarChart2, Loader2, Plus, Trash2, X, Calendar } from 'lucide-react';
 
 export default function Reports() {
     const qc = useQueryClient();
+    const { user } = useAuth();
+    const canManageShifts = user?.role === 'management';
     const [showShiftModal, setShowShiftModal] = useState(false);
     const [shiftForm, setShiftForm] = useState({ user_id: '', shift_name: '', start_time: '', end_time: '', date: '' });
 
@@ -89,9 +92,11 @@ export default function Reports() {
             <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
                 <div className="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
                     <h2 className="font-semibold flex items-center gap-2"><Calendar size={18} className="text-blue-400" /> Shift Schedule</h2>
-                    <button onClick={() => setShowShiftModal(true)} className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded-lg flex items-center gap-1 transition">
-                        <Plus size={14} /> Add Shift
-                    </button>
+                    {canManageShifts && (
+                        <button type="button" onClick={() => setShowShiftModal(true)} className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded-lg flex items-center gap-1 transition">
+                            <Plus size={14} /> Add Shift
+                        </button>
+                    )}
                 </div>
                 {shifts.length === 0 ? (
                     <div className="p-10 text-center text-gray-500">No shifts scheduled</div>
@@ -100,7 +105,7 @@ export default function Reports() {
                         <thead><tr className="border-b border-gray-800 text-gray-400 text-xs uppercase tracking-wider">
                             <th className="text-left px-5 py-3">Worker</th><th className="text-left px-5 py-3">Shift</th>
                             <th className="text-left px-5 py-3">Time</th><th className="text-left px-5 py-3">Date</th>
-                            <th className="text-right px-5 py-3"></th>
+                            {canManageShifts && <th className="text-right px-5 py-3"></th>}
                         </tr></thead>
                         <tbody className="divide-y divide-gray-800">
                             {shifts.map(s => (
@@ -109,9 +114,11 @@ export default function Reports() {
                                     <td className="px-5 py-3 text-gray-300">{s.shift_name}</td>
                                     <td className="px-5 py-3 text-gray-400 font-mono text-xs">{s.start_time} — {s.end_time}</td>
                                     <td className="px-5 py-3 text-gray-400 text-xs">{new Date(s.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</td>
-                                    <td className="px-5 py-3 text-right">
-                                        <button onClick={() => deleteShift.mutate(s.id)} className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition"><Trash2 size={14} /></button>
-                                    </td>
+                                    {canManageShifts && (
+                                        <td className="px-5 py-3 text-right">
+                                            <button type="button" onClick={() => deleteShift.mutate(s.id)} className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition"><Trash2 size={14} /></button>
+                                        </td>
+                                    )}
                                 </tr>
                             ))}
                         </tbody>
@@ -120,7 +127,7 @@ export default function Reports() {
             </div>
 
             {/* Add Shift Modal */}
-            {showShiftModal && (
+            {canManageShifts && showShiftModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setShowShiftModal(false)}>
                     <div className="bg-gray-900 rounded-2xl border border-gray-800 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
                         <div className="flex items-center justify-between p-5 border-b border-gray-800">

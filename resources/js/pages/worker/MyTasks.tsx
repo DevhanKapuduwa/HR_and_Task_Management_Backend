@@ -43,8 +43,13 @@ export default function MyTasks() {
     const tasks = myTasksData?.tasks || [];
 
     const startMut = useMutation({
-        mutationFn: ({ id, lat, lng }: { id: number; lat: number; lng: number }) => taskApi.start(id, { lat, lng }),
-        onSuccess: () => { qc.invalidateQueries({ queryKey: ['my-tasks'] }); qc.invalidateQueries({ queryKey: ['worker-dashboard'] }); },
+        mutationFn: ({ id, lat, lng }: { id: number; lat?: number; lng?: number }) =>
+            lat !== undefined && lng !== undefined ? taskApi.start(id, { lat, lng }) : taskApi.start(id),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ['my-tasks'] });
+            qc.invalidateQueries({ queryKey: ['worker-dashboard'] });
+            qc.invalidateQueries({ queryKey: ['my-hours'] });
+        },
         onError: (e: any) => setGeoError(e.response?.data?.message || 'Unable to start task.'),
     });
 
@@ -306,7 +311,9 @@ export default function MyTasks() {
                                                     Complete Full Task
                                                 </button>
                                             ) : (
-                                                <span className="text-xs text-gray-400">Complete all sub-tasks to finish full task</span>
+                                                <span className="text-xs text-gray-400">
+                                                    Expand sub-tasks and use Attend on each in order, then submit the full task here.
+                                                </span>
                                             )}
                                         </>
                                     )}
@@ -359,12 +366,17 @@ export default function MyTasks() {
                                                         <button
                                                             onClick={() => {
                                                                 setGeoError('');
-                                                                if (t.location_lat == null || t.location_lng == null) {
-                                                                    setGeoError('Please go to the work location to attend this sub-task.');
-                                                                    return;
-                                                                }
                                                                 if (!canAttendSubTask(t, sub)) {
                                                                     setGeoError('Please complete previous sub-task first.');
+                                                                    return;
+                                                                }
+                                                                // Parent already started at the job site — no second location check for sub-tasks.
+                                                                if (t.status === 'in_progress') {
+                                                                    startMut.mutate({ id: sub.id });
+                                                                    return;
+                                                                }
+                                                                if (t.location_lat == null || t.location_lng == null) {
+                                                                    setGeoError('Please go to the work location to start the work.');
                                                                     return;
                                                                 }
                                                                 if (!navigator.geolocation) {

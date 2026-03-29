@@ -13,6 +13,10 @@ export const leaveApi = {
         reason?: string | null;
     }) => api.post<LeaveRequest>('/worker/leave/requests', data).then(r => r.data),
 
+    /** All leave requests (management / HR / supervisor portal) */
+    allRequests: (params?: { status?: string }) =>
+        api.get<LeaveRequest[]>('/leave/requests', { params }).then(r => r.data),
+
     // Approver inbox
     inbox: () => api.get<any[]>('/leave/inbox').then(r => r.data),
     act: (leaveRequestId: number, data: { action: 'approved' | 'rejected'; comment?: string | null }) =>

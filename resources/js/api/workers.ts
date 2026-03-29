@@ -1,14 +1,17 @@
-import { User, WorkerDashboard } from '../types';
+import { User, WorkerDashboard, ManagerProfileFields, WorkerSelfProfileFields } from '../types';
 import api from './axios';
 
 export const workerApi = {
     getAll: () =>
         api.get<User[]>('/workers').then(r => r.data),
 
+    getById: (id: number) =>
+        api.get<User>(`/workers/${id}`).then(r => r.data),
+
     create: (data: Partial<User> & { password: string }) =>
         api.post<User>('/workers', data).then(r => r.data),
 
-    update: (id: number, data: Partial<User> & { password?: string }) =>
+    update: (id: number, data: Partial<User> & { password?: string } & Partial<ManagerProfileFields>) =>
         api.put<User>(`/workers/${id}`, data).then(r => r.data),
 
     delete: (id: number) =>
@@ -23,4 +26,10 @@ export const workerApi = {
 
     myShift: () =>
         api.get('/worker/my-shift').then(r => r.data),
+
+    myProfile: () =>
+        api.get<User>('/worker/profile').then(r => r.data),
+
+    updateMyProfile: (data: Partial<WorkerSelfProfileFields>) =>
+        api.patch<User>('/worker/profile', data).then(r => r.data),
 };

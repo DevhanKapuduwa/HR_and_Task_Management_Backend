@@ -93,8 +93,8 @@ export default function ManagementLayout() {
                     <div className="text-gray-400 text-sm">
                         Welcome, <span className="text-white font-medium">{user?.name}</span>
                     </div>
-                    <div className="bg-blue-900/40 text-blue-400 text-xs px-3 py-1 rounded-full border border-blue-700">
-                        Management
+                    <div className="bg-blue-900/40 text-blue-400 text-xs px-3 py-1 rounded-full border border-blue-700 capitalize">
+                        {user?.role === 'hr' ? 'HR' : user?.role === 'supervisor' ? 'Supervisor' : 'Management'}
                     </div>
                 </header>
 

@@ -1,21 +1,46 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Calendar, ClipboardList, Loader2, Send } from 'lucide-react';
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, type FormEvent } from 'react';
 import { leaveApi } from '../../api/leave';
 import type { LeaveBalance, LeaveRequest, LeaveType } from '../../types';
 
 const fmt = (d: string) => new Date(d).toLocaleString();
 
+const initialForm = {
+    leave_type_id: '',
+    single_date: '',
+    range_start: '',
+    range_end: '',
+    hours_per_day: '8',
+    reason: '',
+};
+
+/** Inclusive calendar-day count (start and end dates both count). */
+function inclusiveCalendarDays(startYmd: string, endYmd: string): number {
+    if (!startYmd || !endYmd) return 0;
+    const a = new Date(`${startYmd}T12:00:00`);
+    const b = new Date(`${endYmd}T12:00:00`);
+    if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return 0;
+    if (b < a) return 0;
+    return Math.round((b.getTime() - a.getTime()) / 86_400_000) + 1;
+}
+
+function fmtDay(ymd: string): string {
+    if (!ymd) return '';
+    const d = new Date(`${ymd}T12:00:00`);
+    return d.toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function renderEmphasis(line: string) {
+    const parts = line.split('**');
+    return parts.map((p, i) => (i % 2 === 1 ? <strong key={i} className="text-white">{p}</strong> : <span key={i}>{p}</span>));
+}
+
 export default function Leave() {
     const qc = useQueryClient();
     const [formError, setFormError] = useState('');
-    const [form, setForm] = useState({
-        leave_type_id: '',
-        start_at: '',
-        end_at: '',
-        duration_hours: '8',
-        reason: '',
-    });
+    const [rangeMode, setRangeMode] = useState<'single' | 'range'>('single');
+    const [form, setForm] = useState({ ...initialForm });
 
     const { data: balances = [], isLoading: loadingBalances } = useQuery<LeaveBalance[]>({
         queryKey: ['leave-balances'],
@@ -32,17 +57,55 @@ export default function Leave() {
         queryFn: leaveApi.myRequests,
     });
 
+    const leavePreview = useMemo(() => {
+        const hpd = Number(form.hours_per_day);
+        if (!Number.isInteger(hpd) || hpd < 1 || hpd > 8) return null;
+
+        if (rangeMode === 'single') {
+            if (!form.single_date) return null;
+            const days = 1;
+            const total = hpd * days;
+            return {
+                days,
+                hoursPerDay: hpd,
+                totalHours: total,
+                lines: [
+                    `Single day: **${fmtDay(form.single_date)}**`,
+                    `**${hpd} hour${hpd === 1 ? '' : 's'}** on that day.`,
+                    `**Total deduction from your balance: ${total} hour${total === 1 ? '' : 's'}.**`,
+                ],
+            };
+        }
+
+        if (!form.range_start || !form.range_end) return null;
+        const days = inclusiveCalendarDays(form.range_start, form.range_end);
+        if (days <= 0) return null;
+        const total = hpd * days;
+        if (total > 8 * days) return null;
+        return {
+            days,
+            hoursPerDay: hpd,
+            totalHours: total,
+            lines: [
+                `Date range: **${fmtDay(form.range_start)}** through **${fmtDay(form.range_end)}** (**${days}** calendar day${days === 1 ? '' : 's'}, inclusive).`,
+                `**${hpd} hour${hpd === 1 ? '' : 's'}** applied on **each** of those days.`,
+                `**Total: ${hpd} × ${days} = ${total} hour${total === 1 ? '' : 's'}** deducted from your leave balance if approved.`,
+            ],
+        };
+    }, [rangeMode, form.single_date, form.range_start, form.range_end, form.hours_per_day]);
+
     const createMut = useMutation({
-        mutationFn: () => leaveApi.createRequest({
-            leave_type_id: Number(form.leave_type_id),
-            start_at: form.start_at,
-            end_at: form.end_at,
-            duration_hours: Number(form.duration_hours),
-            reason: form.reason || null,
-        }),
+        mutationFn: (payload: {
+            leave_type_id: number;
+            start_at: string;
+            end_at: string;
+            duration_hours: number;
+            reason: string | null;
+        }) => leaveApi.createRequest(payload),
         onSuccess: () => {
             setFormError('');
-            setForm({ leave_type_id: '', start_at: '', end_at: '', duration_hours: '8', reason: '' });
+            setForm({ ...initialForm });
+            setRangeMode('single');
             qc.invalidateQueries({ queryKey: ['leave-requests'] });
             qc.invalidateQueries({ queryKey: ['leave-balances'] });
         },
@@ -57,6 +120,57 @@ export default function Leave() {
 
     const getBalanceTypeName = (b: LeaveBalance) =>
         b.leaveType?.name ?? b.leave_type?.name ?? `Type #${b.leave_type_id}`;
+
+    const handleSubmit = (e: FormEvent) => {
+        e.preventDefault();
+        setFormError('');
+
+        const hpd = Number(form.hours_per_day);
+        if (!Number.isInteger(hpd) || hpd < 1 || hpd > 8) {
+            setFormError('Hours per day must be a whole number between 1 and 8.');
+            return;
+        }
+
+        if (!form.leave_type_id) {
+            setFormError('Please select a leave type.');
+            return;
+        }
+
+        let start_at: string;
+        let end_at: string;
+        let duration_hours: number;
+
+        if (rangeMode === 'single') {
+            if (!form.single_date) {
+                setFormError('Please select a date.');
+                return;
+            }
+            start_at = `${form.single_date}T00:00:00`;
+            end_at = `${form.single_date}T23:59:59`;
+            duration_hours = hpd;
+        } else {
+            if (!form.range_start || !form.range_end) {
+                setFormError('Please select start and end dates.');
+                return;
+            }
+            const days = inclusiveCalendarDays(form.range_start, form.range_end);
+            if (days <= 0) {
+                setFormError('End date must be on or after the start date.');
+                return;
+            }
+            start_at = `${form.range_start}T00:00:00`;
+            end_at = `${form.range_end}T23:59:59`;
+            duration_hours = hpd * days;
+        }
+
+        createMut.mutate({
+            leave_type_id: Number(form.leave_type_id),
+            start_at,
+            end_at,
+            duration_hours,
+            reason: form.reason || null,
+        });
+    };
 
     return (
         <div className="space-y-6">
@@ -96,14 +210,36 @@ export default function Leave() {
                     </div>
                 )}
 
-                <form
-                    onSubmit={(e) => {
-                        e.preventDefault();
-                        setFormError('');
-                        createMut.mutate();
-                    }}
-                    className="space-y-4"
-                >
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <span className="block text-gray-400 text-xs mb-2">Leave span *</span>
+                        <div className="flex gap-1 p-1 rounded-xl bg-gray-950 border border-gray-800 max-w-md">
+                            <button
+                                type="button"
+                                onClick={() => { setRangeMode('single'); setFormError(''); }}
+                                className={`flex-1 text-sm py-2 px-3 rounded-lg transition ${rangeMode === 'single'
+                                    ? 'bg-green-600 text-white shadow'
+                                    : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+                            >
+                                Single day
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => { setRangeMode('range'); setFormError(''); }}
+                                className={`flex-1 text-sm py-2 px-3 rounded-lg transition ${rangeMode === 'range'
+                                    ? 'bg-green-600 text-white shadow'
+                                    : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+                            >
+                                Multiple days
+                            </button>
+                        </div>
+                        <p className="text-xs text-gray-600 mt-2">
+                            {rangeMode === 'single'
+                                ? 'One calendar day; enter how many hours of leave that day.'
+                                : 'Select first and last calendar day (inclusive). The same hours apply to each day; total = hours × number of days.'}
+                        </p>
+                    </div>
+
                     <div className="grid md:grid-cols-2 gap-4">
                         <div>
                             <label className="block text-gray-400 text-xs mb-1">Leave type *</label>
@@ -126,40 +262,67 @@ export default function Leave() {
                             </select>
                         </div>
                         <div>
-                            <label className="block text-gray-400 text-xs mb-1">Duration (hours) *</label>
+                            <label className="block text-gray-400 text-xs mb-1">Hours per day *</label>
                             <input
                                 type="number"
                                 min={1}
+                                max={8}
+                                step={1}
                                 required
-                                value={form.duration_hours}
-                                onChange={(e) => setForm({ ...form, duration_hours: e.target.value })}
+                                value={form.hours_per_day}
+                                onChange={(e) => setForm({ ...form, hours_per_day: e.target.value })}
                                 className="w-full bg-gray-800 text-gray-200 text-sm px-3 py-2.5 rounded-lg border border-gray-700 focus:outline-none focus:border-green-500"
                             />
+                            <p className="text-xs text-gray-600 mt-1">1–8 hours each calendar day in the selection.</p>
                         </div>
                     </div>
 
-                    <div className="grid md:grid-cols-2 gap-4">
+                    {rangeMode === 'single' ? (
                         <div>
-                            <label className="block text-gray-400 text-xs mb-1">Start *</label>
+                            <label className="block text-gray-400 text-xs mb-1">Date *</label>
                             <input
-                                type="datetime-local"
+                                type="date"
                                 required
-                                value={form.start_at}
-                                onChange={(e) => setForm({ ...form, start_at: e.target.value })}
-                                className="w-full bg-gray-800 text-gray-200 text-sm px-3 py-2.5 rounded-lg border border-gray-700 focus:outline-none focus:border-green-500"
+                                value={form.single_date}
+                                onChange={(e) => setForm({ ...form, single_date: e.target.value })}
+                                className="w-full max-w-xs bg-gray-800 text-gray-200 text-sm px-3 py-2.5 rounded-lg border border-gray-700 focus:outline-none focus:border-green-500"
                             />
                         </div>
-                        <div>
-                            <label className="block text-gray-400 text-xs mb-1">End *</label>
-                            <input
-                                type="datetime-local"
-                                required
-                                value={form.end_at}
-                                onChange={(e) => setForm({ ...form, end_at: e.target.value })}
-                                className="w-full bg-gray-800 text-gray-200 text-sm px-3 py-2.5 rounded-lg border border-gray-700 focus:outline-none focus:border-green-500"
-                            />
+                    ) : (
+                        <div className="grid md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-gray-400 text-xs mb-1">First day *</label>
+                                <input
+                                    type="date"
+                                    required
+                                    value={form.range_start}
+                                    onChange={(e) => setForm({ ...form, range_start: e.target.value })}
+                                    className="w-full bg-gray-800 text-gray-200 text-sm px-3 py-2.5 rounded-lg border border-gray-700 focus:outline-none focus:border-green-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-gray-400 text-xs mb-1">Last day *</label>
+                                <input
+                                    type="date"
+                                    required
+                                    value={form.range_end}
+                                    onChange={(e) => setForm({ ...form, range_end: e.target.value })}
+                                    className="w-full bg-gray-800 text-gray-200 text-sm px-3 py-2.5 rounded-lg border border-gray-700 focus:outline-none focus:border-green-500"
+                                />
+                            </div>
                         </div>
-                    </div>
+                    )}
+
+                    {leavePreview && (
+                        <div className="bg-green-950/30 border border-green-800/50 rounded-xl px-4 py-3">
+                            <div className="text-xs font-semibold text-green-400 uppercase tracking-wide mb-2">How your leave will apply</div>
+                            <ul className="text-sm text-gray-200 space-y-1.5 list-disc list-inside">
+                                {leavePreview.lines.map((line, i) => (
+                                    <li key={i} className="marker:text-green-500">{renderEmphasis(line)}</li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
 
                     <div>
                         <label className="block text-gray-400 text-xs mb-1">Reason</label>
@@ -173,7 +336,7 @@ export default function Leave() {
 
                     <button
                         type="submit"
-                        disabled={createMut.isPending}
+                        disabled={createMut.isPending || !leavePreview}
                         className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-sm px-4 py-2.5 rounded-lg flex items-center gap-2 transition"
                     >
                         {createMut.isPending ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
@@ -201,7 +364,7 @@ export default function Leave() {
                                         <div className="text-xs text-gray-500 mt-1 flex items-center gap-2 flex-wrap">
                                             <span className="inline-flex items-center gap-1"><Calendar size={12} /> {fmt(r.start_at)} → {fmt(r.end_at)}</span>
                                             <span className="text-gray-600">·</span>
-                                            <span>{r.duration_hours}h</span>
+                                            <span>{r.duration_hours}h total</span>
                                         </div>
                                         {r.reason && <div className="text-sm text-gray-400 mt-2">{r.reason}</div>}
                                     </div>
@@ -223,4 +386,3 @@ export default function Leave() {
         </div>
     );
 }
-
