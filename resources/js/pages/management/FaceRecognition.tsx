@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { faceRecognitionApi } from '../../api/faceRecognition';
-import { Camera, Loader2, PlayCircle, RefreshCw } from 'lucide-react';
+import { Camera, Loader2, PlayCircle, RefreshCw, VideoOff } from 'lucide-react';
 
 const fmtDateTime = (value: string) =>
     new Date(value).toLocaleString('en-US', {
@@ -12,11 +12,23 @@ const fmtDateTime = (value: string) =>
         second: '2-digit',
     });
 
+// The Laravel proxy URL — goes directly to Laravel (port 8000) to avoid Vite proxy buffering MJPEG
+const LARAVEL_BASE = 'http://127.0.0.1:8000';
+const PROXY_STREAM_URL = `${LARAVEL_BASE}/api/face/live-stream/proxy`;
+
+// Base URL for the API (Vite dev server proxies /api → Laravel)
+const getStreamSrc = (cacheKey: number) =>
+    `${PROXY_STREAM_URL}?_cb=${cacheKey}`;
+
 export default function FaceRecognition() {
     const qc = useQueryClient();
     const [dateFilter, setDateFilter] = useState('');
+    const [streamImgError, setStreamImgError] = useState(false);
+    const [streamKey, setStreamKey] = useState(0);
+    const [waitingForStream, setWaitingForStream] = useState(false);
+    const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    const { data: groupedData, isLoading } = useQuery({
+    const { data: groupedData, isLoading, isError: logsError } = useQuery({
         queryKey: ['face-management-logs', dateFilter],
         queryFn: () => faceRecognitionApi.managementLogs(dateFilter ? { date: dateFilter } : undefined),
     });
@@ -24,16 +36,51 @@ export default function FaceRecognition() {
     const { data: liveStatus, isFetching: liveStatusLoading } = useQuery({
         queryKey: ['face-live-status'],
         queryFn: faceRecognitionApi.liveStatus,
-        refetchInterval: 10000,
+        refetchInterval: waitingForStream ? 3000 : 12000,
     });
+
+    // When stream becomes running, stop the "waiting" state and reload the img
+    useEffect(() => {
+        if (liveStatus?.running && waitingForStream) {
+            setWaitingForStream(false);
+            setStreamImgError(false);
+            setStreamKey(k => k + 1);
+        }
+    }, [liveStatus?.running, waitingForStream]);
+
+    // Clear polling on unmount
+    useEffect(() => {
+        return () => {
+            if (pollRef.current) clearInterval(pollRef.current);
+        };
+    }, []);
 
     const startStream = useMutation({
         mutationFn: faceRecognitionApi.startLiveStream,
-        onSuccess: () => qc.invalidateQueries({ queryKey: ['face-live-status'] }),
+        onSuccess: (data) => {
+            setStreamImgError(false);
+            // If the stream is already running (returned from server), reload immediately
+            if (liveStatus?.running) {
+                setStreamKey(k => k + 1);
+            } else {
+                // Show a waiting spinner while Step 7 boots up (models load, camera init ~5-10s)
+                setWaitingForStream(true);
+            }
+            qc.invalidateQueries({ queryKey: ['face-live-status'] });
+        },
     });
+
+    const handleRefreshStream = () => {
+        setStreamImgError(false);
+        setStreamKey(k => k + 1);
+        qc.invalidateQueries({ queryKey: ['face-live-status'] });
+    };
+
+    const isStreamReady = liveStatus?.running === true && !streamImgError && !waitingForStream;
 
     return (
         <div className="space-y-6">
+            {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <h1 className="text-2xl font-bold flex items-center gap-2">
                     <Camera size={24} className="text-blue-400" /> Face Recognition Logs
@@ -53,47 +100,91 @@ export default function FaceRecognition() {
                 </div>
             </div>
 
+            {/* Live Stream Panel */}
             <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 sm:p-5 space-y-3">
+                {/* Title + controls */}
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                    <h2 className="font-semibold text-white">Live Stream (Step 7)</h2>
+                    <h2 className="font-semibold text-white flex items-center gap-2">
+                        Live Stream
+                        {liveStatus?.running && (
+                            <span className="inline-flex items-center gap-1 text-xs bg-green-900/50 text-green-400 border border-green-700/50 px-2 py-0.5 rounded-full">
+                                <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+                                LIVE
+                            </span>
+                        )}
+                    </h2>
                     <div className="flex items-center gap-2">
                         <button
-                            onClick={() => qc.invalidateQueries({ queryKey: ['face-live-status'] })}
-                            className="px-3 py-2 text-xs bg-gray-800 hover:bg-gray-700 rounded-md text-gray-200 flex items-center gap-1"
+                            onClick={handleRefreshStream}
+                            className="px-3 py-2 text-xs bg-gray-800 hover:bg-gray-700 rounded-md text-gray-200 flex items-center gap-1 transition-colors"
+                            title="Refresh stream"
                         >
                             <RefreshCw size={14} className={liveStatusLoading ? 'animate-spin' : ''} />
                             Refresh
                         </button>
                         <button
                             onClick={() => startStream.mutate()}
-                            disabled={startStream.isPending}
-                            className="px-3 py-2 text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-60 rounded-md text-white flex items-center gap-1"
+                            disabled={startStream.isPending || waitingForStream}
+                            className="px-3 py-2 text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-60 rounded-md text-white flex items-center gap-1 transition-colors"
                         >
-                            {startStream.isPending ? <Loader2 size={14} className="animate-spin" /> : <PlayCircle size={14} />}
-                            Start Step 7
+                            {startStream.isPending || waitingForStream
+                                ? <Loader2 size={14} className="animate-spin" />
+                                : <PlayCircle size={14} />}
+                            {waitingForStream ? 'Starting…' : 'Start Live Stream'}
                         </button>
                     </div>
                 </div>
 
-                <div className="text-sm text-gray-300">
-                    Status:{' '}
-                    <span className={liveStatus?.running ? 'text-green-400 font-semibold' : 'text-yellow-400 font-semibold'}>
-                        {liveStatus?.running ? 'Running' : 'Not Running'}
+                {/* Status row */}
+                <div className="text-sm text-gray-300 flex items-center gap-3 flex-wrap">
+                    <span>
+                        Status:{' '}
+                        <span className={liveStatus?.running ? 'text-green-400 font-semibold' : 'text-yellow-400 font-semibold'}>
+                            {waitingForStream ? 'Starting up…' : liveStatus?.running ? 'Running' : 'Not Running'}
+                        </span>
+                        {liveStatus?.pid ? <span className="text-gray-500 ml-1">· PID {liveStatus.pid}</span> : null}
                     </span>
-                    {liveStatus?.pid ? <span className="text-gray-500"> · PID {liveStatus.pid}</span> : null}
                 </div>
 
-                <div className="text-xs text-gray-400">
-                    Stream URL:{' '}
-                    {liveStatus?.stream_url ? (
-                        <a className="text-blue-400 underline" href={liveStatus.stream_url} target="_blank" rel="noreferrer">
-                            {liveStatus.stream_url}
-                        </a>
+                {/* Stream viewport */}
+                <div className="bg-black rounded-lg overflow-hidden border border-gray-800 min-h-[240px] flex items-center justify-center relative">
+                    {waitingForStream ? (
+                        /* Waiting for Step 7 to boot */
+                        <div className="flex flex-col items-center gap-3 text-gray-400 py-12">
+                            <Loader2 size={36} className="animate-spin text-blue-400" />
+                            <p className="text-sm">Starting Step 7… loading models & camera</p>
+                            <p className="text-xs text-gray-600">This usually takes 10–30 seconds</p>
+                        </div>
+                    ) : streamImgError ? (
+                        /* Stream failed to load */
+                        <div className="flex flex-col items-center gap-3 text-yellow-300 py-12">
+                            <VideoOff size={36} className="text-yellow-500" />
+                            <p className="text-sm font-medium">Stream not available</p>
+                            <p className="text-xs text-gray-500 text-center max-w-xs">
+                                Step 7 may still be loading. Click <strong>Refresh</strong> in ~10s, or
+                                press <strong>Start Live Stream</strong> to launch it.
+                            </p>
+                        </div>
+                    ) : liveStatus?.running ? (
+                        /* MJPEG img — loaded via Laravel proxy to avoid CORS */
+                        <img
+                            key={streamKey}
+                            src={getStreamSrc(streamKey)}
+                            alt="Step 7 live stream"
+                            className="w-full max-h-[480px] object-contain"
+                            onError={() => setStreamImgError(true)}
+                            onLoad={() => setStreamImgError(false)}
+                        />
                     ) : (
-                        'Not configured'
+                        /* Not running yet */
+                        <div className="flex flex-col items-center gap-3 text-gray-600 py-12">
+                            <Camera size={36} />
+                            <p className="text-sm">Press <strong className="text-gray-400">Start Live Stream</strong> to begin</p>
+                        </div>
                     )}
                 </div>
 
+                {/* Step 7 properties grid */}
                 {liveStatus?.step7_properties && (
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
                         <div className="bg-gray-800/70 px-3 py-2 rounded">Resolution: {liveStatus.step7_properties.resolution}</div>
@@ -106,9 +197,14 @@ export default function FaceRecognition() {
                 )}
             </div>
 
+            {/* Detection Logs */}
             {isLoading ? (
                 <div className="flex justify-center py-12">
                     <Loader2 className="animate-spin text-blue-400" />
+                </div>
+            ) : logsError ? (
+                <div className="text-center py-12 text-red-400">
+                    Failed to load face detection logs from backend.
                 </div>
             ) : groupedData?.groups?.length ? (
                 <div className="space-y-4">

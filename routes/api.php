@@ -16,6 +16,9 @@ use App\Http\Controllers\Api\FaceRecognitionController;
 // ── Public ────────────────────────────────────────────
 Route::post('/login', [AuthController::class, 'login']);
 
+// MJPEG proxy — must be public because <img> tags cannot send Bearer tokens
+Route::get('face/live-stream/proxy', [FaceRecognitionController::class, 'proxyLiveStream']);
+
 // ── Protected ─────────────────────────────────────────
 Route::middleware('auth:sanctum')->group(function () {
 
