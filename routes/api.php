@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\AnnouncementController;
 use App\Http\Controllers\Api\EngagementEventController;
 use App\Http\Controllers\Api\LeaveTypeController;
 use App\Http\Controllers\Api\LeaveRequestController;
+use App\Http\Controllers\Api\FaceRecognitionController;
 
 // ── Public ────────────────────────────────────────────
 Route::post('/login', [AuthController::class, 'login']);
@@ -41,6 +42,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::get('engagement/events', [EngagementEventController::class, 'index']);
         Route::get('engagement/events/{event}', [EngagementEventController::class, 'show']);
+        Route::get('face/logs', [FaceRecognitionController::class, 'managementLogs']);
+        Route::get('face/live-stream/status', [FaceRecognitionController::class, 'liveStreamStatus']);
+        Route::post('face/live-stream/start', [FaceRecognitionController::class, 'startLiveStream']);
     });
 
     // ── Management only (create / update / delete) ───────────────────────────
@@ -98,6 +102,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('worker/leave/requests', [LeaveRequestController::class, 'myRequests']);
         Route::get('worker/leave/balances', [LeaveRequestController::class, 'myBalances']);
         Route::post('worker/leave/requests', [LeaveRequestController::class, 'store']);
+        Route::get('worker/face-logs', [FaceRecognitionController::class, 'workerLogs']);
     });
 
     // Approvers: supervisor/hr/management (role-based chain)

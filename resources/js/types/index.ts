@@ -192,6 +192,33 @@ export interface TimeLog {
     created_at?: string;
 }
 
+export interface FaceDetectionLog {
+    timestamp: string;
+    identifier: string;
+    similarity: number;
+    camera: string;
+}
+
+export interface FaceDetectionLogGroup {
+    worker: Pick<User, 'id' | 'name' | 'employee_id'>;
+    logs: FaceDetectionLog[];
+}
+
+export interface FaceLiveStreamStatus {
+    running: boolean;
+    pid: number | null;
+    stream_url: string;
+    step7_properties: {
+        resolution: string;
+        fps: number;
+        yolo_model: string;
+        yolo_confidence: number;
+        cooldown_seconds: number;
+        camera_source: string;
+    };
+    note: string;
+}
+
 export interface Shift {
     id: number;
     user_id: number;

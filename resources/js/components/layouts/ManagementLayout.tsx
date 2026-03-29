@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import {
     LayoutDashboard, Users, ClipboardList,
-    Clock, BarChart2, LogOut, Menu, X, HeartHandshake, Inbox
+    Clock, BarChart2, LogOut, Menu, X, HeartHandshake, Inbox, Camera
 } from 'lucide-react';
 
 const navItems = [
@@ -13,6 +13,7 @@ const navItems = [
     { to: '/management/timelogs',   label: 'Time Logs', icon: Clock },
     { to: '/management/engagement', label: 'Engagement', icon: HeartHandshake },
     { to: '/management/leave',      label: 'Leave',     icon: Inbox },
+    { to: '/management/face-logs',  label: 'Face Logs', icon: Camera },
     { to: '/management/reports',    label: 'Reports',   icon: BarChart2 },
 ];
 
